@@ -10,6 +10,8 @@ import { RequireRole } from '@/components/guards/RequireRole';
 import { RequireAuth } from '@/components/guards/RequireAuth';
 import { Login } from '@/pages/Login/Login';
 import { ForgotPassword } from '@/pages/ForgotPassword/ForgotPassword';
+import { PaymentConfirmed } from '@/pages/Pay/PaymentConfirmed';
+import { PaymentRetry } from '@/pages/Pay/PaymentRetry';
 import { Dashboard } from '@/pages/Dashboard/Dashboard';
 import { League } from '@/pages/League/League';
 import { Activity } from '@/pages/Activity/Activity';
@@ -29,6 +31,10 @@ export function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+
+      {/* Public, unauthenticated tenant payment pages (post-Stripe redirect). */}
+      <Route path="/pay/confirmed" element={<PaymentConfirmed />} />
+      <Route path="/pay/retry" element={<PaymentRetry />} />
 
       {/* authenticated shell (RequireAuth is a passthrough in mock/test mode) */}
       <Route element={<RequireAuth />}>

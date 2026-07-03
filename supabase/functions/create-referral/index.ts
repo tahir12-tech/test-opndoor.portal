@@ -85,8 +85,10 @@ Deno.serve(async (req) => {
       }],
       metadata: { application_id: appId, guarantee_ref: ref },
       client_reference_id: appId,
-      success_url: `${origin}/applications/${ref}?paid=1`,
-      cancel_url: `${origin}/applications/${ref}`,
+      // Public, unauthenticated tenant pages (the tenant is not a portal user).
+      // {CHECKOUT_SESSION_ID} is substituted by Stripe and keys the confirmation.
+      success_url: `${origin}/pay/confirmed?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/pay/retry?session_id={CHECKOUT_SESSION_ID}`,
     });
 
     const service = createClient(SUPABASE_URL, SERVICE);

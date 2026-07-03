@@ -1,0 +1,94 @@
+/* =====================================================================
+   Public tenant payment pages — self-contained, mobile-first, opndoor-branded,
+   no portal chrome. Tenants pay on phones, so this is a single centred card.
+   ===================================================================== */
+.pay {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #f6f3fa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  color: #271d5f;
+}
+.pay__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 22px;
+}
+.pay__wordmark { font-weight: 800; font-size: 24px; letter-spacing: -0.02em; color: #271d5f; }
+.pay__card {
+  width: 100%;
+  max-width: 440px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 10px 40px rgba(39, 29, 95, 0.10);
+  padding: 32px 26px;
+  box-sizing: border-box;
+  text-align: center;
+}
+.pay__icon {
+  width: 60px; height: 60px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 18px;
+}
+.pay__icon--ok { background: rgba(28, 138, 82, 0.12); color: #1c8a52; }
+.pay__icon--wait { background: #f0ebf9; color: #6b5fa6; }
+.pay__icon--warn { background: rgba(199, 125, 10, 0.12); color: #c77d0a; }
+.pay__icon svg { width: 30px; height: 30px; }
+.pay__title { font-size: 22px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.01em; }
+.pay__lead { font-size: 15px; line-height: 1.55; color: #5b4d86; margin: 0 0 20px; }
+
+.pay__receipt {
+  background: #faf8fd;
+  border: 1px solid rgba(39, 29, 95, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 22px;
+  text-align: left;
+}
+.pay__rrow { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; font-size: 14px; }
+.pay__rk { color: #5b4d86; }
+.pay__rv { font-weight: 700; color: #271d5f; }
+.pay__rv--amt { font-size: 18px; }
+
+.pay__deed {
+  border-top: 1px solid rgba(39, 29, 95, 0.08);
+  padding-top: 20px;
+  margin-top: 4px;
+}
+.pay__deed-note { font-size: 14px; line-height: 1.5; color: #5b4d86; margin: 0 0 16px; }
+
+.pay__btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; box-sizing: border-box;
+  padding: 15px 20px;
+  border-radius: 12px;
+  border: none;
+  font-size: 16px; font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.pay__btn:active { transform: translateY(1px); }
+.pay__btn--primary { background: #d364fb; color: #fff; }
+.pay__btn--primary:hover { background: #c14ff0; }
+.pay__btn--primary:disabled { opacity: 0.6; cursor: default; }
+.pay__btn--dark { background: #271d5f; color: #fff; }
+.pay__btn--dark:hover { background: #1c1547; }
+.pay__btn svg { width: 18px; height: 18px; }
+
+.pay__spinner {
+  width: 22px; height: 22px; margin: 0 auto 12px;
+  border: 3px solid #e5ddf3; border-top-color: #d364fb; border-radius: 50%;
+  animation: pay-spin 0.8s linear infinite;
+}
+@keyframes pay-spin { to { transform: rotate(360deg); } }
+
+.pay__muted { font-size: 13px; color: #8579ab; line-height: 1.5; margin: 14px 0 0; }
+.pay__foot { font-size: 12px; color: #8579ab; margin: 22px 0 0; text-align: center; }
+.pay__foot a { color: #6b5fa6; }
