@@ -55,6 +55,8 @@ export interface FullApp {
   /** Deed sub-state while Paid: awaiting_tenant | executed | declined | voided | error | null. */
   deedState: string | null;
   deedSentAt: Date | null;
+  /** When the tenant first opened the deed to sign (null = not yet viewed). */
+  deedViewedAt: Date | null;
 }
 
 let FULL: FullApp[] = [];
@@ -170,6 +172,16 @@ function fmtLong(d: Date): string {
 function addDays(d: Date, n: number): Date {
   return new Date(d.getTime() + n * DAY);
 }
+/** Local-time HH:MM, matching the timeline's dd Mon yyyy · HH:MM format. */
+function fmtTime(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+/** Whole years from dob to the reference day (birthday-aware). */
+function ageOn(dob: Date, today: Date): number {
+  let a = today.getFullYear() - dob.getFullYear();
+  if (today.getMonth() < dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate())) a -= 1;
+  return a;
+}
 
 /**
  * The single source of truth for the guarantee expiry date: the tenancy start
@@ -199,26 +211,55 @@ export function findRecord(ref: string | null): AppRecord | null {
 export function getApplicationDetail(ref: string | null): ApplicationDetail {
   const r = findRecord(ref) || RECORDS[0];
   const idx = RECORDS.indexOf(r);
-  const event = parseISO(r.date);
+
+  // A Supabase-hydrated record carries the real Sent timestamp; when present we
+  // show exactly what was entered and when each event happened. Mock/seed records
+  // (test mode) omit these, so the deterministic stand-ins are used instead.
+  const real = r.sentAtTs != null;
+
+  // ---- Timeline (real timestamps in live mode; synthesised offsets otherwise) ----
   let sentAt: Date;
   let paidAt: Date | undefined;
   let deedAt: Date | undefined;
-  if (r.status === 'deed') {
-    deedAt = event;
-    paidAt = addDays(event, -2);
-    sentAt = addDays(event, -6);
-  } else if (r.status === 'paid') {
-    paidAt = event;
-    sentAt = addDays(event, -4);
+  if (real) {
+    sentAt = new Date(r.sentAtTs as string);
+    paidAt = r.paidAtTs ? new Date(r.paidAtTs) : undefined;
+    deedAt = r.deedAtTs ? new Date(r.deedAtTs) : undefined;
   } else {
-    sentAt = event;
+    const event = parseISO(r.date);
+    if (r.status === 'deed') {
+      deedAt = event;
+      paidAt = addDays(event, -2);
+      sentAt = addDays(event, -6);
+    } else if (r.status === 'paid') {
+      paidAt = event;
+      sentAt = addDays(event, -4);
+    } else {
+      sentAt = event;
+    }
   }
-  const tenancyStart = addDays(sentAt, 16);
-  const dobYear = 1999 - (idx % 9);
-  const dob = new Date(dobYear, (idx * 5) % 12, ((idx * 7) % 27) + 1);
-  const age = 2026 - dobYear - (new Date(2026, 5, 26) < new Date(2026, dob.getMonth(), dob.getDate()) ? 1 : 0);
+
+  const tenancyStart = real && r.tenancyStartTs ? new Date(r.tenancyStartTs) : addDays(sentAt, 16);
+
+  // ---- Date of birth + age ----
+  const today = SUPABASE_ENABLED ? new Date() : new Date(2026, 5, 26);
+  let dob: Date;
+  if (real && r.dob) {
+    dob = parseISO(r.dob);
+  } else {
+    const dobYear = 1999 - (idx % 9);
+    dob = new Date(dobYear, (idx * 5) % 12, ((idx * 7) % 27) + 1);
+  }
+  const age = ageOn(dob, today);
+
+  // ---- Contact + property (real values in live mode; synthesised otherwise) ----
   const emailUser = deaccent(r.name).toLowerCase().replace(/[^a-z ]/g, '').trim().replace(/\s+/g, '.');
   const phoneTail = r.ref.replace(/\D/g, '').slice(-3);
+  const email = real ? (r.email ?? '') : `${emailUser}@gmail.com`;
+  const phone = real ? (r.phone ?? '') : `+44 7700 900${phoneTail}`;
+  const addr2 = real ? (r.addr2 ?? '') : '';
+  const city = real ? (r.city ?? '') : 'London';
+  const county = real ? (r.county ?? '') : 'Greater London';
   const annual = r.rent * 12;
 
   return {
@@ -229,13 +270,14 @@ export function getApplicationDetail(ref: string | null): ApplicationDetail {
     initials: initials(r.name),
     title: r.title,
     role: r.role,
-    fullName: `${r.title} ${r.name}`,
+    fullName: `${r.title} ${r.name}`.trim(),
     dob: `${fmtLong(dob)} (${age})`,
-    email: `${emailUser}@gmail.com`,
-    phone: `+44 7700 900${phoneTail}`,
+    email,
+    phone,
     addr1: r.addr1,
-    city: 'London',
-    county: 'Greater London',
+    addr2,
+    city,
+    county,
     postcode: r.postcode,
     agency: r.agency,
     branch: r.branch,
@@ -248,9 +290,9 @@ export function getApplicationDetail(ref: string | null): ApplicationDetail {
     sentAt,
     paidAt: paidAt || null,
     deedAt: deedAt || null,
-    sentStr: `${fmtShort(sentAt)} · 10:24`,
-    paidStr: paidAt ? `${fmtShort(paidAt)} · 16:09` : null,
-    deedStr: deedAt ? `${fmtShort(deedAt)} · 09:41` : null,
+    sentStr: `${fmtShort(sentAt)} · ${real ? fmtTime(sentAt) : '10:24'}`,
+    paidStr: paidAt ? `${fmtShort(paidAt)} · ${real ? fmtTime(paidAt) : '16:09'}` : null,
+    deedStr: deedAt ? `${fmtShort(deedAt)} · ${real ? fmtTime(deedAt) : '09:41'}` : null,
     issue: deedAt ? fmtShort(deedAt) : null,
     // Expiry is always tenancy start + 12 months - 1 day, never anchored on the deed date.
     expiry: deedAt ? fmtShort(guaranteeExpiry(tenancyStart)) : null,
@@ -332,15 +374,19 @@ async function appIdByRef(ref: string): Promise<string> {
 }
 
 /**
- * Persist a tenancy-start amendment via the amend_tenancy_start RPC, which
- * re-checks canAmendTenancyStart (role/status/ownership) in the database.
+ * Persist a tenancy-start amendment via the amend-tenancy-start Edge Function.
+ * The function calls the amend_tenancy_start RPC (deed-state-aware permission,
+ * AAL2, ownership) then orchestrates the deed: void+regenerate while awaiting
+ * signature, or archive+replace once executed. Returns the server's summary.
  * No-op in mock mode. The UI calculation is amendTenancyStart above.
  */
-export async function amendTenancyStartDb(ref: string, newStart: Date): Promise<void> {
-  if (!SUPABASE_ENABLED) return;
+export async function amendTenancyStartDb(ref: string, newStart: Date): Promise<string | undefined> {
+  if (!SUPABASE_ENABLED) return undefined;
   const iso = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
-  const { error } = await sb().rpc('amend_tenancy_start', { p_app: await appIdByRef(ref), p_new_start: iso });
-  if (error) throw new Error(error.message);
+  const { data, error } = await sb().functions.invoke('amend-tenancy-start', { body: { ref, newStart: iso } });
+  if (error) throw new Error('Could not amend the tenancy start date.');
+  if (!data?.ok) throw new Error(data?.error || 'Could not amend the tenancy start date.');
+  return data.message as string | undefined;
 }
 
 /**
@@ -359,17 +405,21 @@ export async function sendDeedToAgent(ref: string, recipientEmail?: string, save
 }
 
 /**
- * Who may amend the tenancy start date, by payment status:
- * - Before payment (Sent): any viewing role may amend; a Referrer only their
- *   own application (there is no deed or cover period yet, so this is just
- *   correcting application data).
- * - After payment (Paid or Deed Issued): Management and opndoor admin only,
- *   because it reissues the Deed of Guarantee and recomputes the expiry.
- * The back end must enforce this rule independently.
+ * Who may amend the tenancy start date, by deed state:
+ * - Sent, or Paid-but-unexecuted (deed_state not 'executed'): any viewing role
+ *   may amend; a Referrer only their own. While a deed is awaiting signature the
+ *   outstanding document is voided and regenerated so the corrected date prints.
+ * - Executed deed (status 'deed' / deed_state 'executed'): Management and opndoor
+ *   admin only, and the signed PDF is archived before a replacement is issued.
+ * The back end (amend_tenancy_start RPC + amend-tenancy-start Edge Function)
+ * enforces this rule independently.
  */
-export function canAmendTenancyStart(role: Role, status: Status, ownedByReferrer: boolean): boolean {
-  if (status === 'sent') return role === 'referrer' ? ownedByReferrer : true;
-  return role === 'superadmin' || role === 'management';
+export function canAmendTenancyStart(role: Role, status: Status, ownedByReferrer: boolean, deedState: string | null = null): boolean {
+  // Once the deed is executed (issued), only Management and opndoor admin may
+  // amend (the signed deed is archived and replaced). Before that - Sent, or
+  // Paid-but-unexecuted - the owning Referrer may amend too.
+  if (status === 'deed' || deedState === 'executed') return role === 'superadmin' || role === 'management';
+  return role === 'referrer' ? ownedByReferrer : true;
 }
 
 /**
@@ -380,6 +430,17 @@ export function canAmendTenancyStart(role: Role, status: Status, ownedByReferrer
  */
 export function canSendDeed(role: Role, ownedByReferrer: boolean): boolean {
   if (role === 'referrer') return ownedByReferrer;
+  return role === 'superadmin' || role === 'management';
+}
+
+/**
+ * Who may "Replace and resend deed" (void the outstanding PandaDoc document and
+ * issue a fresh one) while a deed is awaiting signature: Management and opndoor
+ * admin only, never Referrers. The tenant-nudge "Resend signature request" is
+ * available to every authorised viewer (owning Referrer, Management, admin) and
+ * so is not gated here. The back end (pandadoc-void-regenerate) re-checks this.
+ */
+export function canReplaceDeed(role: Role): boolean {
   return role === 'superadmin' || role === 'management';
 }
 

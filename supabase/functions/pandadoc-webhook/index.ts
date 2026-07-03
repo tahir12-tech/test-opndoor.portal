@@ -50,7 +50,17 @@ Deno.serve(async (req) => {
       }
       await service.rpc("apply_deed_executed", { p_document_id: docId, p_pdf_path: path });
       if (app) {
-        await service.from("activity_log").insert({ application_id: app.id, kind: "deed_issued", message: "Deed of Guarantee fully executed and issued.", actor: "PandaDoc" });
+        // The signing event. The "Deed Issued" milestone (status/timeline) is
+        // driven by apply_deed_executed above; this is the distinct signed entry.
+        await service.from("activity_log").insert({ application_id: app.id, kind: "deed_signed", message: "Deed signed by the tenant.", actor: "PandaDoc", visibility: "business" });
+        await service.from("pandadoc_events").update({ application_id: app.id }).eq("id", evId);
+      }
+    } else if (status === "document.viewed") {
+      if (app) {
+        // First view only: the event id (docId:document.viewed) is deduplicated
+        // above, and the null guard is a second safeguard.
+        await service.from("applications").update({ deed_viewed_at: new Date().toISOString() }).eq("id", app.id).is("deed_viewed_at", null);
+        await service.from("activity_log").insert({ application_id: app.id, kind: "deed_viewed", message: "Deed viewed by the tenant.", actor: "PandaDoc", visibility: "business" });
         await service.from("pandadoc_events").update({ application_id: app.id }).eq("id", evId);
       }
     } else if (status === "document.voided") {

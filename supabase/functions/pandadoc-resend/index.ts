@@ -7,7 +7,7 @@
 // voided, it generates a fresh document. Logged to the activity feed.
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { resendDocument, generateDeed } from "../_shared/pandadoc.ts";
+import { remindSignature, generateDeed } from "../_shared/pandadoc.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     const { data: app, error } = await userClient
       .from("applications")
-      .select("id, status, deed_state, pandadoc_document_id")
+      .select("id, status, deed_state, pandadoc_document_id, guarantee_ref, tenant_first_name, tenant_last_name")
       .eq("guarantee_ref", ref)
       .maybeSingle();
     if (error) return json({ ok: false, error: error.message }, 400);
@@ -47,15 +47,32 @@ Deno.serve(async (req) => {
     if (app.status !== "paid") return json({ ok: false, error: "The deed can only be (re)sent while the application is Paid and awaiting execution." }, 400);
 
     const service = createClient(SUPABASE_URL, SERVICE);
-    let result;
     if (app.deed_state === "awaiting_tenant" && app.pandadoc_document_id) {
-      result = await resendDocument(app.pandadoc_document_id);
-      if (result.ok) await service.from("activity_log").insert({ application_id: app.id, kind: "deed_resent", message: `Signature request resent to the tenant by ${actor}.`, actor });
-    } else {
-      result = await generateDeed(service, app.id);
+      // State-aware nudge: reminder if PandaDoc allows it, else re-deliver the link.
+      const result = await remindSignature(app.pandadoc_document_id, {
+        guarantee_ref: app.guarantee_ref,
+        tenant_first_name: app.tenant_first_name,
+        tenant_last_name: app.tenant_last_name,
+      });
+      if (!result.ok) {
+        // Honest, partner-safe entry for everyone; the raw provider detail is
+        // logged internal (opndoor-admin-only). No raw error reaches the partner.
+        if (result.technical) {
+          await service.from("activity_log").insert([
+            { application_id: app.id, kind: "deed_reminder_failed", message: result.error, actor: "System", visibility: "business" },
+            { application_id: app.id, kind: "deed_reminder_failed", message: `Reminder failed: ${result.technical}`, actor: "System", visibility: "internal" },
+          ]);
+        }
+        return json({ ok: false, error: result.error }, 200);
+      }
+      const message = result.method === "link" ? "Signing link re-sent to the tenant." : "Signature reminder sent to the tenant.";
+      await service.from("activity_log").insert({ application_id: app.id, kind: "deed_reminded", message: `${message} (by ${actor})`, actor });
+      return json({ ok: true, message });
     }
-    if (!result.ok) return json({ ok: false, error: result.error }, 200);
-    return json({ ok: true });
+    // No live document (errored / declined / voided): generate a fresh one.
+    const gen = await generateDeed(service, app.id);
+    if (!gen.ok) return json({ ok: false, error: gen.error }, 200);
+    return json({ ok: true, message: "Fresh deed sent to the tenant to sign." });
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
   }

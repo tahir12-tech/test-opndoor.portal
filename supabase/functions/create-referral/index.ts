@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
       kind: emailRes.ok ? "payment_email_sent" : "payment_email_failed",
       message: emailRes.ok ? `Payment email sent (test mode) to ${emailRes.to}.` : `Payment email not sent: ${emailRes.error}`,
       actor: "System",
+      visibility: emailRes.ok ? "business" : "internal",
     });
 
     return json({ ok: true, ref, paymentUrl: session.url, emailSent: emailRes.ok, emailError: emailRes.ok ? null : emailRes.error });

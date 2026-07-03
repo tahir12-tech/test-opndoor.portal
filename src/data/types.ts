@@ -124,6 +124,7 @@ export interface ApplicationDetail {
   email: string;
   phone: string;
   addr1: string;
+  addr2: string;
   city: string;
   county: string;
   postcode: string;

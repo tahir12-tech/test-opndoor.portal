@@ -28,6 +28,8 @@ export interface PaymentLogEntry {
   message: string;
   actor: string | null;
   at: string;
+  /** 'business' (partner-safe) or 'internal' (opndoor-admin-only technical detail). */
+  visibility: string;
 }
 
 export interface PaymentInfo {
@@ -44,6 +46,8 @@ export interface PaymentInfo {
   /** Deed sub-state while Paid: awaiting_tenant | executed | declined | voided | error. */
   deedState: string | null;
   deedSentAt: string | null;
+  /** When the tenant first opened the deed to sign (null = not yet viewed). */
+  deedViewedAt: string | null;
   pandadocDocumentId: string | null;
   hasExecutedPdf: boolean;
   log: PaymentLogEntry[];
@@ -64,13 +68,13 @@ export async function getPaymentInfo(ref: string): Promise<PaymentInfo | null> {
   const client = sb();
   const { data, error } = await client
     .from('applications')
-    .select('id, status, payment_state, payment_url, paid_at, paid_amount, stripe_payment_intent_id, refunded_at, stripe_refund_id, refund_after_start, deed_state, deed_sent_at, pandadoc_document_id, executed_pdf_path')
+    .select('id, status, payment_state, payment_url, paid_at, paid_amount, stripe_payment_intent_id, refunded_at, stripe_refund_id, refund_after_start, deed_state, deed_sent_at, deed_viewed_at, pandadoc_document_id, executed_pdf_path')
     .eq('guarantee_ref', ref)
     .maybeSingle();
   if (error || !data) return null;
   const { data: log } = await client
     .from('activity_log')
-    .select('kind, message, actor, at')
+    .select('kind, message, actor, at, visibility')
     .eq('application_id', data.id)
     .order('at', { ascending: false });
   return {
@@ -85,6 +89,7 @@ export async function getPaymentInfo(ref: string): Promise<PaymentInfo | null> {
     refundAfterStart: !!data.refund_after_start,
     deedState: data.deed_state ?? null,
     deedSentAt: data.deed_sent_at ?? null,
+    deedViewedAt: data.deed_viewed_at ?? null,
     pandadocDocumentId: data.pandadoc_document_id ?? null,
     hasExecutedPdf: !!data.executed_pdf_path,
     log: (log ?? []) as PaymentLogEntry[],
@@ -99,12 +104,20 @@ export async function resendPaymentEmail(ref: string): Promise<{ ok: boolean; er
   return { ok: true };
 }
 
-/** Resend the signature request, or regenerate the deed if it errored/declined/voided. */
-export async function resendDeed(ref: string): Promise<{ ok: boolean; error?: string }> {
+/** Nudge the tenant to sign (state-aware), or regenerate if errored/declined/voided. */
+export async function resendDeed(ref: string): Promise<{ ok: boolean; message?: string; error?: string }> {
   const { data, error } = await sb().functions.invoke('pandadoc-resend', { body: { ref } });
   if (error) return { ok: false, error: await functionErrorMessage(error, 'Could not send the deed.') };
   if (!data?.ok) return { ok: false, error: data?.error || 'Could not send the deed.' };
-  return { ok: true };
+  return { ok: true, message: data.message };
+}
+
+/** Void the outstanding deed and generate a fresh one (Management / opndoor admin). */
+export async function voidRegenerateDeed(ref: string): Promise<{ ok: boolean; message?: string; error?: string }> {
+  const { data, error } = await sb().functions.invoke('pandadoc-void-regenerate', { body: { ref } });
+  if (error) return { ok: false, error: await functionErrorMessage(error, 'Could not void and regenerate the deed.') };
+  if (!data?.ok) return { ok: false, error: data?.error || 'Could not void and regenerate the deed.' };
+  return { ok: true, message: data.message };
 }
 
 /** Get a short-lived signed URL for the executed deed PDF. */

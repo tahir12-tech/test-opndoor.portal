@@ -112,7 +112,11 @@ export function Activity() {
                   <div className="lbl">Sent</div>
                   <div className="val">{dmy(s.sentAt)}</div>
                 </div>
-                <div className="exp-row__pill"><Pill variant="danger">{s.days} days waiting</Pill></div>
+                <div className="exp-row__date">
+                  <div className="lbl">Viewed</div>
+                  <div className="val">{s.viewedAt ? dmy(s.viewedAt) : 'Not viewed'}</div>
+                </div>
+                <div className="exp-row__pill"><Pill variant={s.viewedAt ? 'warn' : 'danger'}>{s.days} days waiting</Pill></div>
               </Link>
             ))}
           </CardBody>

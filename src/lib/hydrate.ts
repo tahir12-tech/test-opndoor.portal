@@ -80,10 +80,12 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     client.from('branches').select('id, name, area, unreviewed, agency_id, partner_id'),
     client.from('agent_contacts').select('id, name, email, phone, contact_role, is_primary, agency_id, branch_id'),
     client.from('applications').select(
-      'id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode, ' +
+      'id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, ' +
+        'tenant_dob, tenant_email, tenant_phone, ' +
+        'prop_addr1, prop_addr2, prop_city, prop_county, prop_postcode, ' +
         'monthly_rent, status, beneficiary, tenancy_start, sent_at, paid_at, deed_issued_at, expiry_date, ' +
         'payment_state, refunded_at, refunded_amount, paid_amount, refund_after_start, ' +
-        'deed_state, deed_sent_at, ' +
+        'deed_state, deed_sent_at, deed_viewed_at, ' +
         'referrer_id, branch_id, agency_id, partner_id, ' +
         'branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name), partner:partners(slug)',
     ),
@@ -230,6 +232,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     refundAfterStart: !!a.refund_after_start,
     deedState: a.deed_state ?? null,
     deedSentAt: toDate(a.deed_sent_at),
+    deedViewedAt: toDate(a.deed_viewed_at),
   }));
 
   const recordsOut: AppRecord[] = apps.map((a) => ({
@@ -246,6 +249,17 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     date: eventDate(a),
     referrer: emb(a.referrer)?.full_name ?? '',
     owner: ownerFlag(a),
+    // Real values so the detail view shows exactly what was entered, and when.
+    dob: a.tenant_dob ?? null,
+    email: a.tenant_email ?? null,
+    phone: a.tenant_phone ?? null,
+    addr2: a.prop_addr2 ?? null,
+    city: a.prop_city ?? null,
+    county: a.prop_county ?? null,
+    tenancyStartTs: a.tenancy_start ?? null,
+    sentAtTs: a.sent_at ?? null,
+    paidAtTs: a.paid_at ?? null,
+    deedAtTs: a.deed_issued_at ?? null,
   }));
 
   /* ---- upcoming expiries: near-term in-force (deed) guarantees ---- */

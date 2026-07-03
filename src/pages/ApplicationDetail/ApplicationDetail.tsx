@@ -12,7 +12,7 @@
    ===================================================================== */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, type PaymentInfo } from '@/data';
+import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canReplaceDeed, canSendDeed, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, voidRegenerateDeed, type PaymentInfo } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -32,6 +32,8 @@ const NOW = new Date(2026, 5, 26);
 const fmtLong = (x: Date) => `${x.getDate()} ${MONTHS_LONG[x.getMonth()]} ${x.getFullYear()}`;
 const fmtShort = (x: Date) => `${String(x.getDate()).padStart(2, '0')} ${MONTHS[x.getMonth()]} ${x.getFullYear()}`;
 const fmtInput = (x: Date) => `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`;
+// Canonical activity timestamp: dd/mm/yyyy · HH:mm.
+const fmtStamp = (x: Date) => `${fmtInput(x)} · ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
 function parseInput(s: string): Date | null {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || '').trim());
   if (!m) return null;
@@ -45,6 +47,35 @@ interface Activity {
   text: React.ReactNode;
   time: string;
 }
+
+// Feed dot colour per activity_log event kind.
+const feedColor = (kind: string): string => {
+  if (kind === 'payment_received') return 'var(--paid)';
+  if (kind === 'deed_reminder_failed') return 'var(--warn, #c77d0a)';
+  if (kind === 'refunded' || kind === 'deed_error' || kind === 'payment_email_failed') return 'var(--danger, #d64545)';
+  if (kind === 'deed_issued' || kind === 'deed_signed' || kind === 'deed_reissued') return 'var(--deed)';
+  if (kind === 'referral_created' || kind === 'payment_email_sent' || kind === 'deed_viewed' || kind === 'deed_archived') return 'var(--sent)';
+  return 'var(--heliotrope)';
+};
+// One partner-safe label per business event type. opndoor admins see the raw
+// message instead; kinds not listed (e.g. payment_received, refunded) fall back
+// to their stored message, which already carries the amount and is partner-safe.
+const BUSINESS_LABEL: Record<string, string> = {
+  referral_created: 'Referral created and sent to the tenant',
+  payment_email_sent: 'Payment email sent to the tenant',
+  deed_sent: 'Deed of Guarantee sent to the tenant for signature',
+  deed_viewed: 'Deed viewed by the tenant',
+  deed_signed: 'Deed signed by the tenant',
+  deed_reminded: 'Signature reminder sent to the tenant',
+  deed_resent: 'Deed re-sent to the tenant',
+  deed_voided: 'Outstanding deed voided (superseded)',
+  deed_regenerated: 'Deed regenerated and sent to the tenant',
+  deed_declined: 'Tenant declined to sign; opndoor is reviewing',
+  deed_issued: 'Deed of Guarantee issued',
+  tenancy_amended: 'Tenancy start amended',
+  deed_archived: 'Signed deed archived before amendment',
+  deed_reissued: 'Deed reissued for signing',
+};
 
 export function ApplicationDetail() {
   const { ref } = useParams();
@@ -124,8 +155,17 @@ export function ApplicationDetail() {
     setDeedBusy(true);
     const r = await resendDeed(d.ref);
     setDeedBusy(false);
-    if (r.ok) { toast('Deed sent to the tenant for signature.'); void loadPayment(); }
+    if (r.ok) { toast(r.message || 'Reminder sent to the tenant.'); void loadPayment(); }
     else toast(r.error || 'Could not send the deed.');
+  };
+
+  const doReplaceResend = async () => {
+    if (!window.confirm('This cancels the deed currently awaiting signature and sends the tenant a new one. The old signing link will stop working.')) return;
+    setDeedBusy(true);
+    const r = await voidRegenerateDeed(d.ref);
+    setDeedBusy(false);
+    if (r.ok) { toast(r.message || 'Deed replaced and resent to the tenant.'); void loadPayment(); }
+    else toast(r.error || 'Could not replace and resend the deed.');
   };
 
   const doDownloadDeed = async () => {
@@ -149,17 +189,42 @@ export function ApplicationDetail() {
   const gsumExpiry = isDeed ? amendedDates?.expiry ?? d.expiry : 'Pending';
   const gsumNote = isDeed ? 'Auto-assigned by the system' : 'Reserved · confirmed once the deed is issued';
 
-  const baseActivity: Activity[] = [];
-  if (d.deedStr) baseActivity.push({ color: 'var(--deed)', text: 'Deed issued and stored against the record', time: `${d.deedStr} · System` });
-  if (d.paidStr) baseActivity.push({ color: 'var(--paid)', text: 'Guarantor fee paid by tenant', time: `${d.paidStr} · System` });
-  baseActivity.push({ color: 'var(--sent)', text: 'Application sent to tenant', time: `${d.sentStr} · ${d.referrer}` });
-  // Persisted payment activity (real mode): referral created, email sent/resent, paid, refunded.
-  const logItems: Activity[] = (paymentInfo?.log ?? []).map((l) => ({
-    color: l.kind === 'payment_received' ? 'var(--paid)' : l.kind === 'refunded' || l.kind === 'payment_email_failed' ? 'var(--danger, #d64545)' : 'var(--heliotrope)',
-    text: l.message,
-    time: `${fmtInput(new Date(l.at))} · ${l.actor ?? 'System'}`,
-  }));
-  const activity = [...logItems, ...extraActivity, ...baseActivity];
+  // ---- Activity feed ----
+  // Real mode: one canonical feed sourced solely from the activity_log, with a
+  // real timestamp on every row, audience-filtered (raw technical failures are
+  // opndoor-admin-only), one label per event type, one format (dd/mm/yyyy · HH:mm),
+  // strictly chronological. The status timeline strip above is separate and stays.
+  // Mock/demo mode: the deterministic timeline-derived feed, unchanged.
+  const isAdmin = role === 'superadmin';
+  let activity: Activity[];
+  if (SUPABASE_ENABLED && paymentInfo) {
+    const log = paymentInfo.log;
+    const visible = isAdmin ? log : log.filter((l) => l.visibility !== 'internal');
+    const rows = visible.map((l) => ({
+      at: new Date(l.at),
+      color: feedColor(l.kind),
+      text: (isAdmin ? l.message : BUSINESS_LABEL[l.kind] ?? l.message) as React.ReactNode,
+      actor: l.actor ?? 'System',
+    }));
+    // Partner-safe soft entry when the deed is currently stuck (raw error hidden).
+    if (!isAdmin && paymentInfo.deedState === 'error') {
+      const lastErr = log.find((l) => l.visibility === 'internal'); // log is newest-first
+      rows.push({
+        at: lastErr ? new Date(lastErr.at) : new Date(),
+        color: 'var(--warn, #c77d0a)',
+        text: 'Deed delivery delayed, opndoor has been notified',
+        actor: 'System',
+      });
+    }
+    rows.sort((a, b) => b.at.getTime() - a.at.getTime());
+    activity = [...extraActivity, ...rows.map((r) => ({ color: r.color, text: r.text, time: `${fmtStamp(r.at)} · ${r.actor}` }))];
+  } else {
+    const baseActivity: Activity[] = [];
+    if (d.deedStr) baseActivity.push({ color: 'var(--deed)', text: 'Deed issued and stored against the record', time: `${d.deedStr} · System` });
+    if (d.paidStr) baseActivity.push({ color: 'var(--paid)', text: 'Guarantor fee paid by tenant', time: `${d.paidStr} · System` });
+    baseActivity.push({ color: 'var(--sent)', text: 'Application sent to tenant', time: `${d.sentStr} · ${d.referrer}` });
+    activity = [...extraActivity, ...baseActivity];
+  }
 
   // ---- payment display (Stripe, real mode) ----
   const pi = paymentInfo;
@@ -173,7 +238,7 @@ export function ApplicationDetail() {
   // Before payment (Sent) amending just corrects data; after payment it reissues the deed.
   const reissues = d.status !== 'sent';
   // Who may amend: Sent -> any viewing role (Referrer only their own); Paid/Deed -> Management + opndoor admin.
-  const canAmend = canAmendTenancyStart(role, d.status, d.owner === 1);
+  const canAmend = canAmendTenancyStart(role, d.status, d.owner === 1, paymentInfo?.deedState ?? null);
 
   // ---- amend validation ----
   // Any valid calendar date is allowed. We only require a real dd/mm/yyyy date
@@ -200,8 +265,9 @@ export function ApplicationDetail() {
 
   async function saveAmend() {
     if (!parsed || !canSave) return;
+    let serverMsg: string | undefined;
     try {
-      await amendTenancyStartDb(d.ref, parsed);
+      serverMsg = await amendTenancyStartDb(d.ref, parsed);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Could not amend the tenancy start date.');
       return;
@@ -217,12 +283,16 @@ export function ApplicationDetail() {
       {
         color: 'var(--heliotrope)',
         text: result.reissued ? <>Tenancy start amended to <b>{fmtLong(parsed)}</b>; deed reissued</> : <>Tenancy start amended to <b>{fmtLong(parsed)}</b></>,
-        time: `${fmtShort(NOW)} · ${who}`,
+        time: `${SUPABASE_ENABLED ? fmtStamp(new Date()) : fmtShort(NOW)} · ${who}`,
       },
       ...prev,
     ]);
     setAmendOpen(false);
-    toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsed)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsed)}.`);
+    // The Edge Function's summary reflects what actually happened to the deed
+    // (voided+regenerated, or archived+replaced); prefer it in live mode.
+    if (serverMsg) toast(serverMsg);
+    else toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsed)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsed)}.`);
+    void loadPayment();
   }
 
   // ---- send deed to agent ----
@@ -231,6 +301,8 @@ export function ApplicationDetail() {
   const eff = effectiveContacts(resolved.agency, resolved.branch);
   const sendSrc = eff.inherited ? `agency default for ${d.agency}` : `${d.branch} branch`;
   const isReferrer = role === 'referrer';
+  // Replace-and-resend is a destructive recovery action: Management + opndoor admin only.
+  const canManage = canReplaceDeed(role);
   // Who may send the issued deed: Referrers only on their own; Management + opndoor admin on any in scope.
   const canSend = canSendDeed(role, d.owner === 1);
   // Referrers are send-only: they can only send when a recipient is already resolved.
@@ -275,7 +347,7 @@ export function ApplicationDetail() {
     }
     const who = role === 'superadmin' ? 'opndoor admin' : role === 'management' ? 'Management' : 'Referrer';
     setExtraActivity((prev) => [
-      { color: 'var(--heliotrope)', text: <>Deed of Guarantee sent to <b>{c!.name}</b> ({c!.email})</>, time: `${fmtShort(NOW)} · ${who}` },
+      { color: 'var(--heliotrope)', text: <>Deed of Guarantee sent to <b>{c!.name}</b> ({c!.email})</>, time: `${SUPABASE_ENABLED ? fmtStamp(new Date()) : fmtShort(NOW)} · ${who}` },
       ...prev,
     ]);
     setSendOpen(false);
@@ -330,7 +402,7 @@ export function ApplicationDetail() {
             <CardHead title="Property" />
             <CardBody style={{ paddingTop: 6, paddingBottom: 6 }}>
               <div className="drow"><span className="drow__k">Address line 1</span><span className="drow__v">{d.addr1}</span></div>
-              <div className="drow"><span className="drow__k">Address line 2</span><span className="drow__v">—</span></div>
+              <div className="drow"><span className="drow__k">Address line 2</span><span className="drow__v">{d.addr2 || '—'}</span></div>
               <div className="drow"><span className="drow__k">City / town</span><span className="drow__v">{d.city}</span></div>
               <div className="drow"><span className="drow__k">County</span><span className="drow__v">{d.county}</span></div>
               <div className="drow"><span className="drow__k">Postcode</span><span className="drow__v"><b>{d.postcode}</b></span></div>
@@ -451,12 +523,29 @@ export function ApplicationDetail() {
                       <span className="deed__ic" style={{ color: 'var(--sent)' }}><Icon name="clock" strokeWidth={1.8} /></span>
                       <div className="grow">
                         <div className="deed__t">Deed sent for signature, awaiting tenant</div>
-                        <div className="deed__s">{pi.deedSentAt ? `Sent to the tenant on ${fmtInput(new Date(pi.deedSentAt))}` : 'Sent to the tenant to sign'}</div>
+                        <div className="deed__s">The tenant's signing journey so far</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--sent)', flex: '0 0 auto' }} />
+                        <span style={{ fontWeight: 600 }}>Sent</span>
+                        <span style={{ marginLeft: 'auto', color: 'var(--ink-mute)' }}>{pi.deedSentAt ? fmtStamp(new Date(pi.deedSentAt)) : '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: pi.deedViewedAt ? 'var(--paid)' : 'rgba(39,29,95,0.18)', flex: '0 0 auto' }} />
+                        <span style={{ fontWeight: 600, color: pi.deedViewedAt ? undefined : 'var(--ink-mute)' }}>{pi.deedViewedAt ? 'Viewed by tenant' : 'Not yet viewed'}</span>
+                        {pi.deedViewedAt && <span style={{ marginLeft: 'auto', color: 'var(--ink-mute)' }}>{fmtStamp(new Date(pi.deedViewedAt))}</span>}
                       </div>
                     </div>
                     <div style={{ marginTop: 12 }}>
                       <Button variant="primary" size="sm" block onClick={doResendDeed} disabled={deedBusy}><Icon name="send" /> {deedBusy ? 'Sending…' : 'Resend signature request'}</Button>
                     </div>
+                    {canManage && (
+                      <div style={{ marginTop: 10 }}>
+                        <Button variant="ghost" size="sm" block onClick={doReplaceResend} disabled={deedBusy}><Icon name="refresh" /> Replace and resend deed</Button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>

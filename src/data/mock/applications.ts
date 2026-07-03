@@ -23,6 +23,20 @@ export interface AppRecord {
   date: string;
   referrer: string;
   owner: number;
+  // Real tenant/property/timeline values from Supabase, present in live mode only.
+  // Mock seed records omit these and the detail builder synthesises deterministic
+  // stand-ins instead; their presence is what makes getApplicationDetail show the
+  // exact values that were entered, and when each event actually happened.
+  dob?: string | null;          // 'YYYY-MM-DD'
+  email?: string | null;
+  phone?: string | null;
+  addr2?: string | null;
+  city?: string | null;
+  county?: string | null;
+  tenancyStartTs?: string | null; // ISO tenancy start
+  sentAtTs?: string | null;       // ISO timestamp of the real Sent event
+  paidAtTs?: string | null;       // ISO timestamp of the real Paid event
+  deedAtTs?: string | null;       // ISO timestamp of the real Deed Issued event
 }
 
 /** Rich records (mirror the list, plus role + referrer), used by getApplicationDetail. */

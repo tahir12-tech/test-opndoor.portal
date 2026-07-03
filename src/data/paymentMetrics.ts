@@ -85,6 +85,8 @@ export interface AwaitingSignature {
   branch: string;
   agency: string;
   sentAt: Date;
+  /** When the tenant first opened the deed (null = not yet viewed). */
+  viewedAt: Date | null;
   days: number;
 }
 
@@ -100,7 +102,7 @@ export function getAwaitingSignature(role: Role, scope: PartnerScope, thresholdD
   for (const a of set) {
     if (a.deedState !== 'awaiting_tenant' || !a.deedSentAt) continue;
     const days = Math.floor((now.getTime() - a.deedSentAt.getTime()) / 86_400_000);
-    if (days > thresholdDays) out.push({ ref: a.ref, branch: a.branch, agency: a.agency, sentAt: a.deedSentAt, days });
+    if (days > thresholdDays) out.push({ ref: a.ref, branch: a.branch, agency: a.agency, sentAt: a.deedSentAt, viewedAt: a.deedViewedAt, days });
   }
   return out.sort((x, y) => y.days - x.days);
 }

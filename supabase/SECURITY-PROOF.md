@@ -228,7 +228,11 @@ Example output: `apps_visible = 30 (all), partners_visible = 3, users_visible =
 
 ### C6. Permission rules in the database (amend / send)
 
-Simulating Priya (Referrer). Each attempt is caught so all six run.
+Simulating Priya (Referrer). Each attempt is caught so all seven run. The amend
+boundary is deed-state aware: an owning Referrer may amend while **Sent or
+Paid-but-unexecuted** (`deed_state <> 'executed'`), but once the deed is executed
+(`status = 'deed'` / `deed_state = 'executed'`) amends are Management/opndoor-admin
+only. Send stays owner-scoped, resolved-recipient-only for Referrers.
 
 ```sql
 begin;
@@ -247,20 +251,24 @@ begin
   exception when others then insert into _t values ('2. amend NON-owned sent (GR-20502)', 'BLOCKED (expected): '||sqlerrm); end;
 
   begin perform public.amend_tenancy_start((select id from public.applications where guarantee_ref='GR-20455'), date '2026-08-01');
-    insert into _t values ('3. amend OWN paid (GR-20455)', 'ALLOWED (UNEXPECTED!)');
-  exception when others then insert into _t values ('3. amend OWN paid (GR-20455)', 'BLOCKED (expected): '||sqlerrm); end;
+    insert into _t values ('3. amend OWN paid-unexecuted (GR-20455)', 'ALLOWED (expected)');
+  exception when others then insert into _t values ('3. amend OWN paid-unexecuted (GR-20455)', 'BLOCKED (UNEXPECTED!): '||sqlerrm); end;
+
+  begin perform public.amend_tenancy_start((select id from public.applications where guarantee_ref='GR-20418'), date '2026-08-01');
+    insert into _t values ('4. amend OWN executed deed (GR-20418)', 'ALLOWED (UNEXPECTED!)');
+  exception when others then insert into _t values ('4. amend OWN executed deed (GR-20418)', 'BLOCKED (expected): '||sqlerrm); end;
 
   begin perform public.send_deed_to_agent((select id from public.applications where guarantee_ref='GR-20418'), null, false);
-    insert into _t values ('4. send OWN deed (GR-20418)', 'ALLOWED (expected)');
-  exception when others then insert into _t values ('4. send OWN deed (GR-20418)', 'BLOCKED: '||sqlerrm); end;
+    insert into _t values ('5. send OWN deed (GR-20418)', 'ALLOWED (expected)');
+  exception when others then insert into _t values ('5. send OWN deed (GR-20418)', 'BLOCKED: '||sqlerrm); end;
 
   begin perform public.send_deed_to_agent((select id from public.applications where guarantee_ref='GR-20322'), null, false);
-    insert into _t values ('5. send NON-owned deed (GR-20322)', 'ALLOWED (UNEXPECTED!)');
-  exception when others then insert into _t values ('5. send NON-owned deed (GR-20322)', 'BLOCKED (expected): '||sqlerrm); end;
+    insert into _t values ('6. send NON-owned deed (GR-20322)', 'ALLOWED (UNEXPECTED!)');
+  exception when others then insert into _t values ('6. send NON-owned deed (GR-20322)', 'BLOCKED (expected): '||sqlerrm); end;
 
   begin perform public.send_deed_to_agent((select id from public.applications where guarantee_ref='GR-20418'), 'oneoff@example.com', true);
-    insert into _t values ('6. one-off recipient / save (GR-20418)', 'ALLOWED (UNEXPECTED!)');
-  exception when others then insert into _t values ('6. one-off recipient / save (GR-20418)', 'BLOCKED (expected): '||sqlerrm); end;
+    insert into _t values ('7. one-off recipient / save (GR-20418)', 'ALLOWED (UNEXPECTED!)');
+  exception when others then insert into _t values ('7. one-off recipient / save (GR-20418)', 'BLOCKED (expected): '||sqlerrm); end;
 end $$;
 select * from _t order by test;
 rollback;
@@ -272,10 +280,11 @@ Output:
 |---|---|
 | 1. amend OWN sent (GR-20489) | ALLOWED (expected) |
 | 2. amend NON-owned sent (GR-20502) | BLOCKED (expected): not permitted |
-| 3. amend OWN paid (GR-20455) | BLOCKED (expected): amend not permitted for this role and status |
-| 4. send OWN deed (GR-20418) | ALLOWED (expected) |
-| 5. send NON-owned deed (GR-20322) | BLOCKED (expected): not permitted |
-| 6. one-off recipient / save (GR-20418) | BLOCKED (expected): referrers may only send to the resolved contact and cannot save contacts |
+| 3. amend OWN paid-unexecuted (GR-20455) | ALLOWED (expected) |
+| 4. amend OWN executed deed (GR-20418) | BLOCKED (expected): amend not permitted for this role and status |
+| 5. send OWN deed (GR-20418) | ALLOWED (expected) |
+| 6. send NON-owned deed (GR-20322) | BLOCKED (expected): not permitted |
+| 7. one-off recipient / save (GR-20418) | BLOCKED (expected): referrers may only send to the resolved contact and cannot save contacts |
 
 ### C7. Referrers cannot write contacts
 
