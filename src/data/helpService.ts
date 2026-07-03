@@ -7,7 +7,7 @@
    create/update/delete endpoints, with real file upload replacing the
    client-side data-URL storage.
    ===================================================================== */
-import type { HelpContent, HelpFaq, HelpManager, HelpResource, HelpResourceSection } from './types';
+import type { HelpContent, HelpManager, HelpResource, HelpResourceSection } from './types';
 import { KEYS, clone, loadJSON, saveJSON } from './storage';
 import { HELP_SEED } from './mock/help';
 
@@ -73,9 +73,6 @@ export function deleteFaq(id: string): void {
   DATA.faqs = DATA.faqs.filter((x) => x.id !== id);
   persist();
 }
-export function findFaq(id: string): HelpFaq | undefined {
-  return DATA.faqs.find((x) => x.id === id);
-}
 
 /* ---- account managers ---- */
 export function addManager(m: Omit<HelpManager, 'id'>): void {
@@ -92,9 +89,6 @@ export function updateManager(id: string, changes: Partial<HelpManager>): void {
 export function deleteManager(id: string): void {
   DATA.managers = DATA.managers.filter((x) => x.id !== id);
   persist();
-}
-export function findManager(id: string): HelpManager | undefined {
-  return DATA.managers.find((x) => x.id === id);
 }
 export function findResource(section: HelpResourceSection, id: string): HelpResource | undefined {
   return DATA[section].find((x) => x.id === id);

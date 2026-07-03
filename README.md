@@ -1,9 +1,15 @@
 # Guarantee Referral Portal — React front end
 
-Production-ready React port of the opndoor Guarantee Referral Portal prototype
-(`../portal/`). The prototype (plain HTML/CSS/JS) is the visual and functional
-spec; this app reproduces all 12 screens faithfully and is structured so a
-developer can wire a real back end by replacing one layer — `src/data/`.
+React front end for the opndoor Guarantee Referral Portal, backed by a live
+Supabase back end (Postgres + RLS, native TOTP MFA, Storage, Edge Functions,
+pg_cron). It runs in two modes off one switch (`SUPABASE_ENABLED`): **live mode**
+(real login + MFA, RLS-scoped reads, Stripe/PandaDoc/Resend via Edge Functions),
+and **mock mode** (in-memory seed + the parametric analytics model) used by the
+render smoke test and env-less dev. The `src/data/` layer is the single seam
+between the screens and both modes.
+
+The back-end setup, security model and test procedures live in `supabase/`
+(README, SECURITY-PROOF, PAYMENTS-TESTING, DEEDS-TESTING, EXPIRY-REMINDERS).
 
 British English throughout. Currency GBP. Dates dd/mm/yyyy.
 
@@ -28,9 +34,11 @@ npm run preview    # preview the production build
 
 ## The one thing to know: the data/service layer
 
-**Screens never touch storage or mock data. They import only from `@/data`.**
-This is the single seam between the UI and a back end. To integrate, replace the
-bodies of the service functions with `fetch` calls — the screens do not change.
+**Screens never touch storage, Supabase or mock data directly. They import only
+from `@/data`.** The services stay synchronous: after AAL2 login, `src/lib/hydrate.ts`
+replaces the mock working copies with the RLS-scoped live data, and mutations go
+through Edge Functions / RPCs. Mock mode keeps the in-memory seed, so the same
+screens run with no back end.
 
 ```
 src/data/
@@ -47,22 +55,24 @@ src/data/
   usersService.ts          getUsers, addUser, updateUserRole, deactivateUser, …
   reconciliationService.ts getQueue, confirmRecord, mergeRecord
   helpService.ts           getHelpContent + resource/FAQ/manager CRUD
-  authService.ts           login, verify2fa, requestPasswordReset (mocked)
+  authService.ts           real Supabase email/password + TOTP MFA (reset stubbed)
+  paymentService.ts        live Stripe payment state + resend-payment-email
+  liveAnalytics.ts         live dashboard/league/export figures from the hydrated set
 ```
 
-Every place a real back end / external system is required is marked with an
-`// INTEGRATION:` comment (auth & 2FA, analytics, exports, Stripe payment,
-PandaDoc deed generation, HubSpot reconciliation, per-partner commission
-enforcement, notifications). These mirror HANDOFF sections 5 and 8.
+Live back-end calls run through Supabase (RLS reads) and Edge Functions
+(create-referral, amend-tenancy-start, the Stripe/PandaDoc webhooks, expiry-reminders,
+payment-confirmation). The remaining `// INTEGRATION:` / `PENDING:` comments mark
+what is genuinely not wired yet (password reset, HubSpot reconciliation, help CMS).
 
 ### Session (role + partner scope)
 
-`src/session/SessionContext.tsx` holds `{ role, partnerScope, period }` — the
-"as if from an authenticated session" object. Management and Referrer are pinned
-to their home partner; opndoor admin's scope follows the partner selector. The
-demo role switcher (`setRole`) is kept for now; in production `verify2fa` seeds
-the session and the switcher is removed. Role and partner/period persist to
-localStorage so they survive a reload.
+`src/session/SessionContext.tsx` resolves the Supabase session and, at AAL2,
+loads the profile and hydrates the service layer. It holds `{ role, partnerScope,
+period }`. Management and Referrer are pinned to their home partner; opndoor
+admin's scope follows the partner selector. The demo role switcher (`setRole`) is
+a UI lens only — data stays RLS-scoped to the signed-in user. Partner/period
+persist to localStorage so they survive a reload.
 
 ## Structure
 
@@ -77,7 +87,7 @@ src/
     layout/                AppShell, Sidebar, Topbar, menus, pageMeta
     guards/                RequireRole (opndoor-admin-only routes)
     ui/                    Button, Field, Pill, Tag, Card, Modal, Toast, Icon,
-                           DataTable, FilterTabs, StatusTimeline, BarChart,
+                           FilterTabs, StatusTimeline, BarChart, Pager,
                            Select, TypeAhead, Eyebrow, RoleNote, RoleOnly
     AgentBranchPicker.tsx  the linked agent→branch select-or-add
   pages/                   one folder per screen (Component.tsx + Component.css)
@@ -89,10 +99,14 @@ src/
 | Route | Screen | Access |
 |---|---|---|
 | `/` | → `/login` | — |
-| `/login` | Login (credentials → 6-digit 2FA) | pre-auth |
+| `/login` | Login (email + password → TOTP) | pre-auth |
 | `/forgot-password` | Forgot password | pre-auth |
+| `/pay/confirmed` | Tenant payment confirmation + "Sign your deed" | **public** (post-Stripe) |
+| `/pay/retry` | Tenant payment retry | **public** (post-Stripe) |
 | `/dashboard` | Dashboard | all roles |
-| `/applications` | Applications (`?agency=` / `?branch=` / `?partner=`) | all roles |
+| `/league` | League tables | all roles |
+| `/activity` | Activity feed + upcoming expiries | all roles |
+| `/applications` | Applications (`?agency=` / `?branch=` / `?partner=` / `?status=` / `?deed=awaiting`) | all roles |
 | `/applications/:ref` | Application detail | all roles |
 | `/new-application` | New application | all roles |
 | `/agencies` | Agencies & branches | all roles |
@@ -114,10 +128,19 @@ isolation is resolved centrally in `partnersService.scopeFor` + the session and
 applied inside the services. Commission rates are **per-partner**
 (`partnerRate` / `agentRate` on each partner record) and never hard-coded.
 
-## What is NOT built (left for the back end)
+## What IS wired to the live back end
 
-No real auth, 2FA, Stripe, PandaDoc or HubSpot. The service layer and the
-`// INTEGRATION:` comments mark exactly where each belongs. Analytics and export
-rows are still generated from the parametric model in
-`src/data/mock/analyticsModel.ts`; replace `analyticsService` / `exportsService`
-with real endpoints to retire it.
+Real email/password auth + native TOTP MFA (AAL2-gated RLS); referral creation
+with Stripe test Checkout + branded Resend email; PandaDoc deed generation,
+signing, reminders and the public tenant confirmation/signing page; refunds;
+tenancy-start amend with deed reissue; automated expiry reminders (pg_cron);
+and all analytics/exports computed from the live records in live mode. In mock
+mode (no env / under vitest) the parametric model in
+`src/data/mock/analyticsModel.ts` and the in-memory seed drive the same screens.
+
+## Genuinely pending
+
+Password reset (stubbed — Supabase `resetPasswordForEmail` + a set-new-password
+page); HubSpot sync and the reconciliation queue's live wiring; the help-content
+CMS (client-side data-URLs today); and the documented `pg_net` schema move. See
+the `// INTEGRATION:` / `PENDING:` comments and `supabase/SECURITY-PROOF.md`.

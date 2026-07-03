@@ -295,13 +295,6 @@
 [data-role='referrer'] .chartrow {
   grid-template-columns: 1fr;
 }
-.chart-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 /* support metrics */
 .supportrow {
   display: grid;
@@ -481,40 +474,3 @@
   margin-top: 1px;
 }
 
-/* Live payments block (Supabase mode). */
-.paylive {
-  padding: 18px 22px;
-  margin-bottom: 18px;
-}
-.paylive__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.paylive__grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-@media (max-width: 720px) {
-  .paylive__grid { grid-template-columns: 1fr; }
-}
-.paylive__cell {
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--app-bg);
-}
-.paylive__val {
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 24px;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  margin-top: 6px;
-}
-.paylive__val--neg {
-  color: var(--danger);
-}

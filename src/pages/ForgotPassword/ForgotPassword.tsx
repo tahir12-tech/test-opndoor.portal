@@ -2,8 +2,9 @@
    Forgot password — email entry, then a neutral "if an account exists"
    confirmation. UI only.
 
-   INTEGRATION: authService.requestPasswordReset must generate a time-limited
-   reset token, send the email, and a set-new-password page must consume it.
+   PENDING: password reset is still stubbed (authService.requestPasswordReset is
+   a no-op). To go live, send the reset email via Supabase (resetPasswordForEmail)
+   and add a set-new-password page to consume the redirect token.
    ===================================================================== */
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';

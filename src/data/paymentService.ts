@@ -7,15 +7,13 @@
    create-referral Edge Function (see applicationsService.createReferral).
    ===================================================================== */
 import { sb } from '@/lib/supabase';
+import type { DeedState, PaymentState } from './types';
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 
 /** True when a Stripe test publishable key is configured (drives the TEST MODE badge). */
 export function stripeTestMode(): boolean {
   return typeof STRIPE_PK === 'string' && STRIPE_PK.startsWith('pk_test_');
-}
-export function paymentsConfigured(): boolean {
-  return Boolean(STRIPE_PK);
 }
 
 /** True when PandaDoc deed generation is running in sandbox (drives the badge). */
@@ -34,7 +32,7 @@ export interface PaymentLogEntry {
 
 export interface PaymentInfo {
   status: string;
-  paymentState: string | null; // 'awaiting' | 'paid' | 'refunded' | null
+  paymentState: PaymentState | null;
   paymentUrl: string | null;
   paidAt: string | null;
   paidAmount: number | null;
@@ -43,8 +41,8 @@ export interface PaymentInfo {
   refundRef: string | null;
   /** True when the refund happened on or after the tenancy start (policy anomaly). */
   refundAfterStart: boolean;
-  /** Deed sub-state while Paid: awaiting_tenant | executed | declined | voided | error. */
-  deedState: string | null;
+  /** Deed sub-state while Paid, or null before a deed exists. */
+  deedState: DeedState | null;
   deedSentAt: string | null;
   /** When the tenant first opened the deed to sign (null = not yet viewed). */
   deedViewedAt: string | null;

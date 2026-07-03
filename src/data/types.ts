@@ -14,6 +14,10 @@ export const ALL_PARTNERS = 'all';
 
 /** Application lifecycle. */
 export type Status = 'sent' | 'paid' | 'deed';
+/** Deed sub-state while Paid (DB-enforced set), or null before a deed exists. */
+export type DeedState = 'awaiting_tenant' | 'executed' | 'declined' | 'voided' | 'error';
+/** Guarantor-fee payment state (DB-enforced set). */
+export type PaymentState = 'awaiting' | 'paid' | 'refunded';
 export type PartnerStatus = 'active' | 'onboarding' | 'paused';
 export type UserStatus = 'active' | 'pending';
 

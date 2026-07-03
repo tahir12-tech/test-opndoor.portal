@@ -103,10 +103,3 @@ export async function verifyCode(factorId: string, code: string): Promise<AuthRe
 export async function signOut(): Promise<void> {
   await sb().auth.signOut();
 }
-
-/** Send a password-reset email (real mode). */
-export async function sendPasswordReset(email: string): Promise<AuthResult> {
-  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
-  const { error } = await sb().auth.resetPasswordForEmail(email.trim(), { redirectTo });
-  return error ? { ok: false, error: error.message } : { ok: true };
-}

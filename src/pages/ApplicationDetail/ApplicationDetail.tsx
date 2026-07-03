@@ -5,10 +5,10 @@
    tenancy-start modal (opndoor admin + Management), which accepts any valid
    date and reissues the deed.
 
-   INTEGRATION: getApplicationDetail + amendTenancyStart are in
-   applicationsService; the deed reissue must be applied server-side.
-   Payment/deed generation are Stripe/PandaDoc in production. Send-deed
-   emails a copy to the agent contact resolved by orgService.
+   In live mode payment/deed state comes from getPaymentInfo (the activity_log
+   and application row); amends persist via the amend-tenancy-start Edge Function
+   (deed reissue applied server-side); payment and deed generation run on Stripe
+   and PandaDoc. Send-deed emails the agent contact resolved by orgService.
    ===================================================================== */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';

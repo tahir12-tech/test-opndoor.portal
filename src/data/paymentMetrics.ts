@@ -4,8 +4,8 @@
    portfolio view; these figures are the live payment truth, so refunds are
    honest and reported alongside without touching paid/conversion.
 
-   In mock/test mode getPaymentSummary reports available = false and the UI
-   simply does not show the live-payments block.
+   In mock/test mode these figures fall back to the modelled view; the live
+   values are computed only when the application set has been hydrated.
    ===================================================================== */
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import type { PartnerScope, Period, Role } from './types';
@@ -51,33 +51,6 @@ export function basisInPeriod(a: FullApp, basis: ExportBasisKind, start: Date, e
   if (basis === 'paid') return inRange(a.paidAt, start, end);
   if (basis === 'deed') return inRange(a.deedAt, start, end);
   return inRange(a.sentAt, start, end) || inRange(a.paidAt, start, end) || inRange(a.deedAt, start, end);
-}
-
-export interface PaymentSummary {
-  available: boolean;
-  paidInPeriod: number;
-  feesGross: number;
-  refundCount: number;
-  refundValue: number;
-  feesNet: number;
-}
-
-/** Live fees collected (gross), refunds (count + value) and net, for the period. */
-export function getPaymentSummary(role: Role, scope: PartnerScope, period: Period): PaymentSummary {
-  if (!SUPABASE_ENABLED || allFull().length === 0) {
-    return { available: false, paidInPeriod: 0, feesGross: 0, refundCount: 0, refundValue: 0, feesNet: 0 };
-  }
-  const [start, end] = periodRange(period);
-  const set = scopeFull(allFull(), role, scope);
-  let paidInPeriod = 0;
-  let feesGross = 0;
-  let refundCount = 0;
-  let refundValue = 0;
-  for (const a of set) {
-    if (inRange(a.paidAt, start, end)) { paidInPeriod += 1; feesGross += a.rent; }
-    if (inRange(a.refundedAt, start, end)) { refundCount += 1; refundValue += a.refundedAmount ?? a.rent; }
-  }
-  return { available: true, paidInPeriod, feesGross, refundCount, refundValue, feesNet: feesGross - refundValue };
 }
 
 export interface AwaitingSignature {

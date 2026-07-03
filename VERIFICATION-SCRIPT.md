@@ -167,7 +167,9 @@ Signed in as **Priya** (or Tom).
     with a copyable checkout link; the review inbox gets the branded payment email.
 28. **Pay (success):** open the pay link (email button or the copied link), pay with
     **`4242 4242 4242 4242`**, any future expiry, any CVC, any postcode. **Expect:** on
-    return the detail polls and flips to **Paid** with the date (dd/mm/yyyy), amount
+    success you land on the public **`/pay/confirmed`** page (payment received,
+    amount, reference; then "Sign your deed now" once the deed generates). Back in
+    the portal the detail page shows **Paid** with the date (dd/mm/yyyy), amount
     (GBP) and a Stripe reference; the deed auto-generates (Section 3, step 18).
 29. **Decline:** create a second referral, open its pay link, pay with
     **`4000 0000 0000 0002`** (declined). **Expect:** the application stays **Sent /

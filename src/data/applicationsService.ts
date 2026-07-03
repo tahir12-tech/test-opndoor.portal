@@ -4,16 +4,14 @@
    builds the display-ready detail record, and exposes the referral
    lifecycle actions.
 
-   INTEGRATION:
-   - getApplications / countByStatus -> GET /applications with filters; the
-     role + scope isolation shown here must ALSO be enforced server-side.
-   - getApplicationDetail -> GET /applications/:ref.
-   - createReferral -> POST /referrals (then Stripe for payment, PandaDoc
-     for the deed; guarantee ref/issue/expiry assigned by the system).
-   - amendTenancyStart -> PATCH that reissues the Deed of Guarantee with the
-     new tenancy start date and recomputes issue and expiry.
+   Live mode reads the RLS-scoped working copies hydrated from Supabase and
+   filters/sorts client-side; the role + scope isolation shown here is ALSO
+   enforced server-side by RLS. The lifecycle actions call Edge Functions:
+   createReferral -> create-referral (Stripe Checkout + branded email),
+   amendTenancyStartDb -> amend-tenancy-start (deed-state-aware reissue),
+   sendDeedToAgent -> send_deed_to_agent RPC. Mock/test mode uses the seed.
    ===================================================================== */
-import type { ApplicationDetail, ApplicationSummary, PartnerScope, Role, Status } from './types';
+import type { ApplicationDetail, ApplicationSummary, DeedState, PartnerScope, Role, Status } from './types';
 import { ALL_PARTNERS } from './types';
 import { AGENT_ADDR, APPLICATION_RECORDS as RECORDS_SEED, APPLICATIONS_LIST as LIST_SEED, type AppRecord } from './mock/applications';
 import { SUPABASE_ENABLED, sb } from '@/lib/supabase';
@@ -55,8 +53,8 @@ export interface FullApp {
   refundedAt: Date | null;
   refundedAmount: number | null;
   refundAfterStart: boolean;
-  /** Deed sub-state while Paid: awaiting_tenant | executed | declined | voided | error | null. */
-  deedState: string | null;
+  /** Deed sub-state while Paid, or null before a deed exists. */
+  deedState: DeedState | null;
   deedSentAt: Date | null;
   /** When the tenant first opened the deed to sign (null = not yet viewed). */
   deedViewedAt: Date | null;
@@ -368,10 +366,11 @@ export interface CreateReferralInput {
 }
 
 /**
- * Create a referral (status = Sent).
- * INTEGRATION: POST /referrals. The back end assigns the guarantee reference,
- * then payment (Stripe) moves it to Paid and deed generation (PandaDoc) to
- * Deed Issued, assigning issue date and expiry. Mocked here as a new ref.
+ * Create a referral (status = Sent). In live mode this invokes the create-referral
+ * Edge Function, which validates + inserts as the caller (RLS applies), opens a
+ * Stripe test Checkout Session for the guarantor fee and emails the branded
+ * payment link; the guarantee reference is assigned by the DB. Stripe (paid) then
+ * PandaDoc (deed) advance it via webhooks. Mock/test mode returns a synthetic ref.
  */
 export interface CreateReferralResult {
   ref: string;
@@ -502,8 +501,9 @@ export interface AmendResult {
  * that the input is a real dd/mm/yyyy date that differs from the current start.
  * Before payment (Sent) this just corrects the start date. After payment it
  * reissues the Deed of Guarantee and recomputes the 12-month expiry.
- * INTEGRATION: PATCH /applications/:ref/tenancy-start; the back end applies
- * the same status rule and, after payment, reissues the deed.
+ * This computes the UI result only; amendTenancyStartDb persists the change via
+ * the amend-tenancy-start Edge Function, which enforces the deed-state-aware
+ * permission rule and orchestrates the reissue server-side.
  */
 export function amendTenancyStart(status: Status, newStart: Date): AmendResult {
   if (status === 'sent') return { reissued: false, issue: null, expiry: null };

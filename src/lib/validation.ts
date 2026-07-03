@@ -10,15 +10,6 @@ export const TITLE_OPTIONS = ['Mr', 'Mrs', 'Miss', 'Ms', 'Mx', 'Dr'] as const;
 export const UK_POSTCODE_RE = /^[A-Za-z]{1,2}\d[A-Za-z\d]? ?\d[A-Za-z]{2}$/;
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-/** Strict dd/mm/yyyy parse. Returns null unless it is a real calendar date. */
-export function parseDmy(s: string): Date | null {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || '').trim());
-  if (!m) return null;
-  const d = new Date(+m[3], +m[2] - 1, +m[1]);
-  if (d.getFullYear() !== +m[3] || d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[1]) return null;
-  return d;
-}
-
 /** Strict yyyy-mm-dd parse (native date-input value). */
 export function parseISODate(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((s || '').trim());

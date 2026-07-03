@@ -403,7 +403,7 @@ table.dt { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 
 /* ============ FORM CONTROLS ============ */
 .field { display: grid; gap: 7px; }
-.field label, .flabel {
+.field label {
   font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--ink-mute);
 }
@@ -458,13 +458,9 @@ table.dt { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .kpi__delta--down { color: var(--danger); }
 .kpi__delta svg { width: 13px; height: 13px; }
 
-/* divider */
-.hr { height: 1px; background: var(--line); border: none; margin: 0; }
-
 /* small util */
 .muted { color: var(--ink-mute); }
 .soft { color: var(--ink-soft); }
-.mono-num { font-variant-numeric: tabular-nums; }
 .row { display: flex; align-items: center; gap: 10px; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .stack { display: flex; flex-direction: column; }

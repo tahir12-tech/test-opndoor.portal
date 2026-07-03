@@ -11,7 +11,7 @@
    ===================================================================== */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ALL_PARTNERS, authService, getSelectedPartner, homePartner, scopeFor, setHomePartner,
+  ALL_PARTNERS, authService, getSelectedPartner, homePartner, setHomePartner,
   setSelectedPartner as persistPartner, getSelectedPeriod, setSelectedPeriod as persistPeriod,
   type PartnerScope, type Period, type Role,
 } from '@/data';
@@ -210,11 +210,6 @@ export function useSession(): SessionValue {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error('useSession must be used within a SessionProvider');
   return ctx;
-}
-
-/** Convenience: scopeFor for a role (kept aligned with the service rule). */
-export function resolveScope(role: Role): PartnerScope {
-  return scopeFor(role);
 }
 
 export { ALL_PARTNERS };

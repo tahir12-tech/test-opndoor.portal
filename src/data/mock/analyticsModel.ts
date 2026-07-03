@@ -5,9 +5,10 @@
    rent, scaled by partner weight. Exports synthesise rows to match those
    counts.
 
-   INTEGRATION: the whole of this file is the seam for real analytics.
-   Replace analyticsService / exportsService bodies with calls to
-   period- and partner-scoped analytics endpoints; this model then goes.
+   This is the MOCK/TEST-mode analytics only. In live mode analyticsService /
+   exportsService compute every figure from the hydrated live application set
+   (src/data/liveAnalytics.ts); this model is the fallback the render smoke test
+   and env-less dev run against, so it stays.
    ===================================================================== */
 
 export const AVG_RENT = 2180; // average monthly rent (constant)

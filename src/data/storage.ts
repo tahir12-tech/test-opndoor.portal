@@ -55,14 +55,6 @@ export function saveString(key: string, value: string): void {
   }
 }
 
-export function removeKey(key: string): void {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    /* ignore */
-  }
-}
-
 /** Deep clone a seed so callers can mutate their working copy without touching the seed. */
 export function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;

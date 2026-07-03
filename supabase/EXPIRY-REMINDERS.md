@@ -59,7 +59,7 @@ literally into `cron.job`.
 ```sql
 -- (a) Store the shared secret in Vault. Use the SAME value set as the
 --     REMINDERS_CRON_SECRET Edge Function secret.
-select vault.create_secret('<your-REMINDERS_CRON_SECRET>', 'reminders_cron_secret', 'expiry-reminders cron');
+select vault.create_secret('68fHYu64R0q4BgBWcusdqFe1KyCTA4lL', 'reminders_cron_secret', 'expiry-reminders cron');
 
 -- (b) Two daily jobs (07:00 + 08:00 UTC). The function runs at exactly 08:00
 --     Europe/London and the off-hour call no-ops.

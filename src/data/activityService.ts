@@ -3,13 +3,12 @@
    read model, both scoped by role and partner (Referrers see their own,
    Management their partner's estate, opndoor admin everything).
 
-   INTEGRATION:
-   - getActivity: today it derives events from the mock applications. In
-     production this is a GET of an events table (referral sent, fee paid,
-     deed issued) filtered to the caller's scope.
-   - getUpcomingExpiries: today it reads the in-force guarantees seed. In
-     production it queries live guarantees and derives expiry with
-     guaranteeExpiry (tenancy start + 12 months - 1 day).
+   Live mode: getActivityFeed and getNotifications read the real activity_log
+   (RLS-scoped, business-visibility) with true timestamps; getUpcomingExpiries
+   reads the hydrated in-force guarantees. Mock/test mode: getActivity derives
+   events deterministically from the mock applications, and getUpcomingExpiries
+   reads the seed. Expiry always comes from guaranteeExpiry (tenancy start + 12
+   months - 1 day) so no surface drifts.
    ===================================================================== */
 import type { ActivityEntry, ActivityKind, ExpiryBand, PartnerScope, Role, UpcomingExpiry } from './types';
 import { ALL_PARTNERS } from './types';

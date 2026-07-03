@@ -80,9 +80,11 @@ Read-model views (`security_invoker`, so they inherit the caller's RLS):
   their partner's agencies/branches/contacts; cannot write contacts.
 - Add-on-the-fly (agencies/branches) allowed for any role within their partner;
   editing canonical records is admin-only.
-- The `canAmendTenancyStart` / `canSendDeed` rules are enforced in the database:
-  by the `applications` UPDATE policy (referrers only their own, only while
-  `sent`) and by the SECURITY DEFINER RPCs, which re-check role/status/ownership.
+- The `canAmendTenancyStart` / `canSendDeed` rules are enforced in the database
+  by the SECURITY DEFINER RPCs (`amend_tenancy_start`, `send_deed_to_agent`),
+  which re-check AAL2, role, ownership and deed state: a referrer may amend only
+  their own and only before the deed is executed (Sent, or Paid pre-signature);
+  once executed, amends are Management/opndoor-admin only.
 
 Proven behaviourally during the build:
 - Priya (Referrer, Rightmove, AAL2): sees exactly her 7 owned applications,

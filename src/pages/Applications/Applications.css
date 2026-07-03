@@ -138,21 +138,3 @@
   border-radius: 999px;
   padding: 2px 8px;
 }
-.fchip--toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  font: inherit;
-}
-.fchip--toggle.is-on {
-  border-color: rgba(214, 69, 69, 0.4);
-  background: rgba(214, 69, 69, 0.08);
-  color: var(--danger);
-}
-.refund-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--danger);
-}

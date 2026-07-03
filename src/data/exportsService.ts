@@ -9,9 +9,10 @@
    Bordereau stays a clean, unbranded CSV: its audience is the underwriter's
    import process, and branding risks breaking it.
 
-   INTEGRATION: in production these are generated from real records by the
-   back end with the same scoping and gating; feed the same BrandedDoc blocks
-   so the format stays identical.
+   Live mode builds every figure from the hydrated live application set (the
+   buildLive and buildReal paths), with the same scoping and gating; mock/test
+   mode uses the parametric model. Both feed the same BrandedDoc blocks, so the
+   export format is identical regardless of source.
    ===================================================================== */
 import type { LeagueRow, LeagueView, PartnerScope, Period, Role } from './types';
 import { ALL_PARTNERS } from './types';

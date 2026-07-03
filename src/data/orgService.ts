@@ -40,8 +40,8 @@ export function findAgency(name: string): Agency | undefined {
   return AGENCIES.find((a) => a.name === name);
 }
 
-/** Same as findAgency but returns null (mirrors the prototype's OrgStore API). */
-export function findAgencyByName(name: string): Agency | null {
+/** Same as findAgency but returns null. Internal helper for createBranchOnTheFly. */
+function findAgencyByName(name: string): Agency | null {
   return AGENCIES.find((a) => a.name === name) ?? null;
 }
 
@@ -52,8 +52,8 @@ export function findAgencyByName(name: string): Agency | null {
    persist and enforce the one-primary-per-owner invariant.
    ===================================================================== */
 
-/** The flagged primary contact, else the first, else null. */
-export function primaryOf(contacts?: AgentContact[]): AgentContact | null {
+/** The flagged primary contact, else the first, else null. Internal helper. */
+function primaryOf(contacts?: AgentContact[]): AgentContact | null {
   if (!contacts || !contacts.length) return null;
   return contacts.find((c) => c.primary) ?? contacts[0];
 }

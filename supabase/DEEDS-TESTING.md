@@ -172,10 +172,12 @@ the payments and deeds env above are set.
 The signing email is sent by PandaDoc's own mail service (not Resend, so it is
 not governed by `EMAIL_FROM`). Two parts:
 
-- **Subject and body copy** are set explicitly in code (`createAndSend` /
-  `resendDocument` in `_shared/pandadoc.ts`): subject "Your opndoor Deed of
-  Guarantee, [reference]" and a short opndoor-branded confirmation message. Edit
-  those strings and redeploy to change the wording.
+- **Subject and body copy** are set explicitly in code in `_shared/pandadoc.ts`:
+  `createAndSend` sets the first-send copy ("Your opndoor Deed of Guarantee,
+  [reference]") and the amend-reissue copy ("Your **updated** opndoor Deed of
+  Guarantee…", which states the new tenancy start and that the previous document
+  is void); `remindSignature` sets the reminder copy. Edit those strings and
+  redeploy to change the wording.
 - **Sender display name** ("X sent you ...") is NOT settable per document by the
   API. PandaDoc uses the profile name of the workspace member whose API key sent
   the document, which is why it currently reads a personal name. To make it read

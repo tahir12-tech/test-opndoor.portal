@@ -83,9 +83,11 @@ env above is set.
    with a banner noting who it was intended for.
 3. **Pay (success):** click Pay in the email (or Copy the link on the detail
    page), pay with `4242 4242 4242 4242`, any future expiry, any CVC, any
-   postcode. On return the detail page polls and flips to **Paid** with the date
-   (dd/mm/yyyy), amount (GBP) and Stripe reference. The Paid event appears in the
-   activity feed.
+   postcode. On success Stripe redirects the tenant to the public
+   **`/pay/confirmed`** page (payment received, amount, reference; then a
+   "Sign your deed now" button once the deed generates). Back in the portal the
+   application's detail page shows **Paid** with the date (dd/mm/yyyy), amount
+   (GBP) and Stripe reference, and the Paid event appears in the activity feed.
 4. **Decline (no change):** create another referral, open its link, pay with
    `4000 0000 0000 0002` (declined). The application stays **Sent / Awaiting
    payment**; no status change.
@@ -117,8 +119,8 @@ order by at desc;
   (JWT) caller; `stripe-webhook` has JWT verification off and is secured by the
   Stripe signature instead.
 - `apply_stripe_payment` / `apply_stripe_refund` are service-role only (the
-  webhook's transition path), separate from the AAL2-gated
-  `set_application_status`.
+  webhook's transition path), separate from the AAL2 + opndoor-admin-only
+  `set_application_status` (a manual test/admin utility).
 - All source lives in `opndoor-portal/supabase/functions/`. Redeploy after edits
   with `npx supabase functions deploy <name> --project-ref pwftaqtrrqtilxlvwxjd`
   (webhook needs `--no-verify-jwt`).

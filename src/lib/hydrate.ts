@@ -235,7 +235,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     agency: emb(a.agency)?.name ?? '',
     branch: emb(a.branch)?.name ?? '',
     referrer: emb(a.referrer)?.full_name ?? '',
-    referrerRole: (emb(a.referrer)?.role ?? null) as any,
+    referrerRole: emb(a.referrer)?.role ?? null,
     owner: ownerFlag(a),
     status: a.status as Status,
     rent: num(a.monthly_rent),
