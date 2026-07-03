@@ -114,6 +114,9 @@ export interface ApplicationSummary {
   partner: string;
   /** True when the guarantor fee was refunded (status stays Paid, by design). */
   refunded?: boolean;
+  /** True when the deed is out for signature (deed_state 'awaiting_tenant'); a
+      sub-state of Paid, filterable from the list and the dashboard. */
+  awaitingSignature?: boolean;
 }
 
 /** Display-ready record for the detail view (see applicationsService.getApplicationDetail). */

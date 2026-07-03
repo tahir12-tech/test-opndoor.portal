@@ -216,6 +216,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     owner: ownerFlag(a),
     partner: slugOfApp(a),
     refunded: a.payment_state === 'refunded',
+    awaitingSignature: a.deed_state === 'awaiting_tenant',
   }));
 
   const toDate = (ts: any): Date | null => (ts ? new Date(ts) : null);

@@ -246,6 +246,12 @@
 .settle__exp > summary::before { content: '▸'; font-size: 10px; transition: transform 0.12s; }
 .settle__exp[open] > summary::before { transform: rotate(90deg); }
 .settle__exp[open] > summary { margin-bottom: 6px; }
+/* Aggregate "total due" line above the per-agency list (agent settlement). */
+.settle__row--agg { padding: 4px 0 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.settle__row--agg .settle__amt { color: var(--ink); }
+/* "View all N agencies" expander wrapping the remaining agency rows. */
+.settle__exp--more { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 6px; }
+.settle__exp--more[open] > summary { margin-bottom: 10px; }
 .settle__head { margin-bottom: 6px; }
 .settle__partner { padding: 14px 0; border-top: 1px solid var(--line); }
 .settle__partner:first-of-type { border-top: none; padding-top: 4px; }

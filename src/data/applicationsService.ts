@@ -96,8 +96,8 @@ export interface AppScopeOpts {
 }
 
 export interface AppFilterOpts extends AppScopeOpts {
-  /** 'refunded' is a cross-cut of Paid (status stays Paid by design). */
-  status?: Status | 'all' | 'refunded';
+  /** 'refunded' and 'awaiting' (deed out for signature) are cross-cuts of Paid. */
+  status?: Status | 'all' | 'refunded' | 'awaiting';
   agency?: string;
   branch?: string;
   q?: string;
@@ -112,14 +112,15 @@ function scopedSet(opts: AppScopeOpts): ApplicationSummary[] {
   return set;
 }
 
-export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number } {
+export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number } {
   const set = scopedSet(opts);
-  // 'refunded' overlaps 'paid' (a refunded fee keeps status Paid by design), so
-  // it is counted in addition to paid, not instead of it. all = sent+paid+deed.
-  const counts = { all: set.length, sent: 0, paid: 0, deed: 0, refunded: 0 };
+  // 'refunded' and 'awaiting' overlap 'paid' (both keep status Paid by design), so
+  // they are counted in addition to paid, not instead of it. all = sent+paid+deed.
+  const counts = { all: set.length, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0 };
   set.forEach((r) => {
     counts[r.status]++;
     if (r.refunded) counts.refunded++;
+    if (r.awaitingSignature) counts.awaiting++;
   });
   return counts;
 }
@@ -130,6 +131,7 @@ export function getApplications(opts: AppFilterOpts): ApplicationSummary[] {
   if (opts.partner) rows = rows.filter((r) => r.partner === opts.partner);
   rows = rows.filter((r) => {
     if (opts.status === 'refunded') { if (!r.refunded) return false; }
+    else if (opts.status === 'awaiting') { if (!r.awaitingSignature) return false; }
     else if (opts.status && opts.status !== 'all' && r.status !== opts.status) return false;
     if (opts.branch && r.branch !== opts.branch) return false;
     if (opts.agency && r.agency !== opts.agency) return false;

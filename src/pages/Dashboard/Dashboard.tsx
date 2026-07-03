@@ -104,6 +104,41 @@ export function Dashboard() {
   const naSettlements = d.live && canSeeSettlements && (partnerDue > 0 || agentDue > 0);
   const hasNeedsAttention = naAwaiting || naStuckSent || naSettlements;
 
+  // #25: the agent settlement can span many agencies, so show the top 5 inline and
+  // collapse the rest behind a "View all" expander. The Performance export always
+  // carries the full list. (The partner settlement is a bounded set and stays full.)
+  const agentTop = agentSettlement.agencies.slice(0, 5);
+  const agentRest = agentSettlement.agencies.slice(5);
+  const agentAgencyRow = (a: (typeof agentSettlement.agencies)[number]) => (
+    <div key={`${a.partner}-${a.agency}`} className="settle__partner">
+      <div className="settle__row">
+        <span>Agent commission payable to <b>{a.agency}</b></span>
+        <span className="settle__amt">{gbpPence(a.commission)}</span>
+      </div>
+      <details className="settle__exp">
+        <summary>Show applications ({a.apps.length})</summary>
+        <div className="settle__apps">
+          <table>
+            <thead>
+              <tr><th>Reference</th><th>Branch</th><th className="num">Paid</th><th className="num">Fee</th><th className="num">Agent commission</th></tr>
+            </thead>
+            <tbody>
+              {a.apps.map((ap) => (
+                <tr key={ap.ref}>
+                  <td>{ap.ref}</td>
+                  <td>{ap.branch}</td>
+                  <td className="num">{dmyShort(ap.paidAt)}</td>
+                  <td className="num">{gbpPence(ap.rent)}</td>
+                  <td className="num">{gbpPence(ap.commission)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  );
+
   const [measure, setMeasure] = useState<Record<ChartKey, Measure>>({ branch: 'value', agency: 'value', referrer: 'value' });
   const [trendView, setTrendView] = useState<TrendView>('month');
   const [trendMeasure, setTrendMeasure] = useState<TrendMeasure>('commission');
@@ -204,7 +239,7 @@ export function Dashboard() {
         {hasNeedsAttention && (
           <section className="needs-attn">
             {naAwaiting && (
-              <Link className="na-stat na-stat--sign" to="/activity" title="Deeds awaiting the tenant's signature">
+              <Link className="na-stat na-stat--sign" to="/applications?deed=awaiting" title="Applications with a deed out for the tenant's signature">
                 <span className="na-stat__n">{d.awaiting}</span>
                 <span className="na-stat__l">awaiting tenant signature</span>
                 <Icon name="arrowRight" className="na-stat__go" />
@@ -552,35 +587,17 @@ export function Dashboard() {
                   </div>
                 </div>
               </div>
-              {agentSettlement.agencies.map((a) => (
-                <div key={`${a.partner}-${a.agency}`} className="settle__partner">
-                  <div className="settle__row">
-                    <span>Agent commission payable to <b>{a.agency}</b></span>
-                    <span className="settle__amt">{gbpPence(a.commission)}</span>
-                  </div>
-                  <details className="settle__exp">
-                    <summary>Show applications ({a.apps.length})</summary>
-                    <div className="settle__apps">
-                      <table>
-                        <thead>
-                          <tr><th>Reference</th><th>Branch</th><th className="num">Paid</th><th className="num">Fee</th><th className="num">Agent commission</th></tr>
-                        </thead>
-                        <tbody>
-                          {a.apps.map((ap) => (
-                            <tr key={ap.ref}>
-                              <td>{ap.ref}</td>
-                              <td>{ap.branch}</td>
-                              <td className="num">{dmyShort(ap.paidAt)}</td>
-                              <td className="num">{gbpPence(ap.rent)}</td>
-                              <td className="num">{gbpPence(ap.commission)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                </div>
-              ))}
+              <div className="settle__row settle__row--agg">
+                <span>Agent commission due <b>{settleDayMonth}</b> across <b>{agentSettlement.agencies.length}</b> {agentSettlement.agencies.length === 1 ? 'agency' : 'agencies'}</span>
+                <span className="settle__amt">{gbpPence(agentDue)}</span>
+              </div>
+              {agentTop.map(agentAgencyRow)}
+              {agentRest.length > 0 && (
+                <details className="settle__exp settle__exp--more">
+                  <summary>View all {agentSettlement.agencies.length} agencies</summary>
+                  {agentRest.map(agentAgencyRow)}
+                </details>
+              )}
             </section>
           </RoleOnly>
         )}

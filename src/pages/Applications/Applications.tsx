@@ -41,9 +41,10 @@ export function Applications() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  // Initial filters from the drill-through URL (?agency= / ?branch= / ?status=).
-  // 'refunded' is a status chip that cross-cuts Paid (status stays Paid by design).
-  const [status, setStatus] = useState<Status | 'all' | 'refunded'>(() => {
+  // Initial filters from the drill-through URL (?agency= / ?branch= / ?status= / ?deed=).
+  // 'refunded' and 'awaiting' are status chips that cross-cut Paid (status stays Paid).
+  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting'>(() => {
+    if (params.get('deed') === 'awaiting') return 'awaiting';
     const s = params.get('status');
     return s === 'sent' || s === 'paid' || s === 'deed' || s === 'refunded' ? s : 'all';
   });
@@ -96,6 +97,11 @@ export function Applications() {
     // Refunded cross-cuts Paid (the fee was refunded; status stays Paid). Counted
     // separately, so All still equals Sent + Paid + Deed, not their sum plus this.
     { id: 'refunded', label: <Pill variant="danger" style={{ background: 'none', padding: 0 }}>Refunded</Pill>, count: counts.refunded },
+    // Awaiting signature: deed out for signature (a sub-state of Paid). Shown when
+    // there is anything awaiting, or when the filter is already active (deep-link).
+    ...(counts.awaiting > 0 || status === 'awaiting'
+      ? [{ id: 'awaiting', label: <Pill variant="warn" style={{ background: 'none', padding: 0 }}>Awaiting signature</Pill>, count: counts.awaiting }]
+      : []),
   ];
 
   const activeFilter = branch
@@ -136,7 +142,7 @@ export function Applications() {
       )}
 
       <div className="toolbar">
-        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded')} />
+        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting')} />
       </div>
 
       <div className="toolbar">

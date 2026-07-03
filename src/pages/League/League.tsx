@@ -60,7 +60,7 @@ function cellFor(col: SortKey, r: LeagueRow) {
 }
 
 export function League() {
-  usePageMeta('dashboard', 'League tables', ['Home', 'Dashboard', 'League tables']);
+  usePageMeta('league', 'League tables', ['Home', 'League tables']);
   const { role, partnerScope, period } = useSession();
   const [params] = useSearchParams();
 
