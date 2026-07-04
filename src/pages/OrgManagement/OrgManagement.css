@@ -412,3 +412,45 @@ mark.hl {
   border-radius: 3px;
   padding: 0 1px;
 }
+
+/* Inline, consequence-aware confirmation shown inside the contacts modal
+   (remove contact, leave-no-primary warning, discard unsaved form). */
+.ct-confirm {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  background: var(--white-lilac, #f7f7fb);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.ct-confirm.is-danger {
+  border-color: #f0cccc;
+  background: #fdf4f4;
+}
+.ct-confirm__title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.ct-confirm__body {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+.ct-confirm__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* Danger-tinted confirm button, kept local so it does not depend on another
+   page's stylesheet being loaded. */
+.btn.btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn.btn--danger:hover {
+  filter: brightness(0.94);
+}

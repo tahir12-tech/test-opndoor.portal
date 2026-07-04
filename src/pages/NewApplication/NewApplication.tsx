@@ -12,7 +12,7 @@
    ===================================================================== */
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { addressLookupAvailable, createReferral, lookupAddresses, type AddressOption } from '@/data';
+import { addressLookupAvailable, ALL_PARTNERS, createReferral, lookupAddresses, type AddressOption } from '@/data';
 import { TITLE_OPTIONS, validateReferral, type ReferralValues } from '@/lib/validation';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -36,7 +36,7 @@ const EMPTY: ReferralValues = {
 export function NewApplication() {
   usePageMeta('new', 'New application', ['Home', 'Applications', 'New']);
   const navigate = useNavigate();
-  const { refresh } = useSession();
+  const { refresh, partnerScope } = useSession();
   const toast = useToast();
 
   const [values, setValues] = useState<ReferralValues>(EMPTY);
@@ -111,6 +111,10 @@ export function NewApplication() {
         agencyNew: org.agencyNew, branchNew: org.branchNew,
         agencyContactEmail: org.agencyContactEmail, agencyContactName: org.agencyContactName,
         agencyContactPhone: org.agencyContactPhone, branchContactEmail: org.branchContactEmail,
+        // The partner an on-the-fly agency belongs to. Only meaningful for an
+        // admin (a partner user's own partner is authoritative server-side);
+        // "all partners" carries no single partner, so send none.
+        partner: partnerScope === ALL_PARTNERS ? undefined : partnerScope,
       });
       await refresh();
       toast(res.emailSent

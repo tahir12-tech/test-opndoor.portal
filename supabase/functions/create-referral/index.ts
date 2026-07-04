@@ -56,8 +56,10 @@ Deno.serve(async (req) => {
     if (brErr) return json({ ok: false, error: brErr.message }, 400);
 
     // Resolve the target branch; if it does not exist yet, create the agency/branch
-    // on the fly (pending_review) and capture the agency-default contact. The RPC
-    // is scoped to the caller's partner and is idempotent (case-insensitive match).
+    // on the fly and capture the agency-default contact. A partner user's records
+    // land pending_review under their own partner; an opndoor admin's land
+    // confirmed (the admin creation IS the review) under p_partner_slug - the
+    // admin's selected partner scope. The RPC is idempotent (case-insensitive).
     let branchId = branch?.id as string | undefined;
     if (!branchId) {
       const { data: targetId, error: tErr } = await userClient.rpc("create_referral_target", {
@@ -67,6 +69,7 @@ Deno.serve(async (req) => {
         p_agency_contact_name: b.agencyContactName ?? null,
         p_agency_phone: b.agencyContactPhone ?? null,
         p_branch_email: b.branchContactEmail ?? null,
+        p_partner_slug: b.partner ?? null,
       });
       if (tErr) return json({ ok: false, error: tErr.message }, 400);
       branchId = targetId as string;

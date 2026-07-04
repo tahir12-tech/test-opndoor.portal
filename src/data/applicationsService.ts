@@ -376,6 +376,10 @@ export interface CreateReferralInput {
   agencyContactName?: string;
   agencyContactPhone?: string;
   branchContactEmail?: string;
+  /** The partner an on-the-fly agency/branch belongs to. Ignored server-side for
+      partner users (their own partner is authoritative); required for an opndoor
+      admin fly-creating a brand-new agency. Null when scope is "all partners". */
+  partner?: string;
 }
 
 /**
@@ -412,6 +416,7 @@ export async function createReferral(input: CreateReferralInput): Promise<Create
       agencyContactName: input.agencyContactName || null,
       agencyContactPhone: input.agencyContactPhone || null,
       branchContactEmail: input.branchContactEmail || null,
+      partner: input.partner || null,
     },
   });
   if (error) {

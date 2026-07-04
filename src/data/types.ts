@@ -50,6 +50,8 @@ export interface CommissionRates {
  * A branch with no contacts inherits the parent agency's (see effectiveContacts).
  */
 export interface AgentContact {
+  /** DB row id (Supabase mode). Absent in mock/test mode. */
+  id?: string;
   name: string;
   email: string;
   phone: string;
@@ -58,6 +60,8 @@ export interface AgentContact {
 }
 
 export interface Branch {
+  /** DB row id (Supabase mode). Absent in mock/test mode. */
+  id?: string;
   name: string;
   area: string;
   referrers?: number;
@@ -70,6 +74,8 @@ export interface Branch {
 }
 
 export interface Agency {
+  /** DB row id (Supabase mode). Absent in mock/test mode. */
+  id?: string;
   /** Owning partner id. The same name under two partners is two records. */
   partner: string;
   name: string;

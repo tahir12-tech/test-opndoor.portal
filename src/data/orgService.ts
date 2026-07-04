@@ -13,6 +13,8 @@ import { ALL_PARTNERS } from './types';
 import { KEYS, clone, loadJSON, saveJSON } from './storage';
 import { ORG_SEED } from './mock/org';
 import { homePartner } from './partnersService';
+import { SUPABASE_ENABLED, sb } from '@/lib/supabase';
+import { isHydrated } from './applicationsService';
 
 let AGENCIES: Agency[] = loadJSON<Agency[]>(KEYS.org, clone(ORG_SEED));
 if (!AGENCIES.length) AGENCIES = clone(ORG_SEED);
@@ -112,6 +114,10 @@ export function updateContact(agencyName: string, branchName: string | null, ind
   const rec: AgentContact = { ...contact };
   if (rec.primary) list.forEach((c) => (c.primary = false));
   list[index] = rec;
+  // Keep exactly one primary: if this edit demoted the owner's only primary,
+  // promote the oldest remaining (list is insertion/oldest-first), mirroring the
+  // live org_update_contact backstop so mock and live never diverge.
+  if (list.length && !list.some((c) => c.primary)) list[0].primary = true;
   persist();
 }
 
@@ -194,6 +200,130 @@ export function createBranchOnTheFly(agencyName: string, name: string): Branch |
   agency.branches.push(branch);
   persist();
   return branch;
+}
+
+/* =====================================================================
+   Live-aware org mutations (Agencies & branches screen). In Supabase mode
+   every change persists through a gated RPC (AAL2 + role-checked, admin
+   creations land confirmed, partner-user creations pending_review); the
+   caller then re-hydrates so the working copy mirrors the server and nothing
+   an admin saves can vanish on the next hydration. In mock/test mode the same
+   edits apply to the local working copy so the demo behaves identically.
+   ===================================================================== */
+const orgLive = (): boolean => SUPABASE_ENABLED && isHydrated();
+
+export interface CreateAgencyInput {
+  name: string;
+  group?: string;
+  /** Required: the agency default contact (no bare agencies through any door). */
+  contactEmail: string;
+  contactName?: string;
+  contactPhone?: string;
+}
+
+/** Persist a new agency (with its required default contact) for the given scope. */
+export async function createAgencyLive(input: CreateAgencyInput, scope: PartnerScope): Promise<void> {
+  if (orgLive()) {
+    const { error } = await sb().rpc('admin_add_agency', {
+      p_name: input.name,
+      p_group: input.group ?? null,
+      p_partner_slug: scope === ALL_PARTNERS ? null : scope,
+      p_contact_email: input.contactEmail,
+      p_contact_name: input.contactName ?? null,
+      p_contact_phone: input.contactPhone ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const ag = addAgency({ name: input.name, group: input.group }, scope);
+  addContact(ag.name, null, {
+    name: input.contactName?.trim() || input.contactEmail,
+    email: input.contactEmail, phone: input.contactPhone?.trim() || '', role: '', primary: true,
+  });
+}
+
+export interface CreateBranchInput {
+  name: string;
+  area?: string;
+  /** Optional: a branch with no contact inherits the agency default. */
+  contactEmail?: string;
+  contactName?: string;
+  contactPhone?: string;
+}
+
+/** Persist a new branch under an agency, with an optional own contact. */
+export async function createBranchLive(agency: Agency, input: CreateBranchInput): Promise<void> {
+  if (orgLive()) {
+    if (!agency.id) throw new Error('This agency is not yet saved. Refresh and try again.');
+    const { error } = await sb().rpc('admin_add_branch', {
+      p_agency_id: agency.id,
+      p_name: input.name,
+      p_area: input.area ?? null,
+      p_contact_email: input.contactEmail?.trim() || null,
+      p_contact_name: input.contactName ?? null,
+      p_contact_phone: input.contactPhone ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const br = addBranch(agency.name, { name: input.name, area: input.area });
+  if (br && input.contactEmail?.trim()) {
+    addContact(agency.name, br.name, {
+      name: input.contactName?.trim() || input.contactEmail.trim(),
+      email: input.contactEmail.trim(), phone: input.contactPhone?.trim() || '', role: '', primary: true,
+    });
+  }
+}
+
+/** Add a contact to an agency (branch = null) or a branch. */
+export async function addContactLive(agency: Agency, branch: Branch | null, rec: AgentContact): Promise<void> {
+  if (orgLive()) {
+    const ownerId = branch ? branch.id : agency.id;
+    if (!ownerId) throw new Error('This record is not yet saved. Refresh and try again.');
+    const { error } = await sb().rpc('org_add_contact', {
+      p_agency_id: branch ? null : agency.id,
+      p_branch_id: branch ? branch.id : null,
+      p_name: rec.name, p_role: rec.role || null, p_email: rec.email, p_phone: rec.phone || null, p_primary: rec.primary,
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  addContact(agency.name, branch?.name ?? null, rec);
+}
+
+/** Update an existing contact by its DB id (index used only in mock mode). */
+export async function updateContactLive(agency: Agency, branch: Branch | null, index: number, contactId: string | undefined, rec: AgentContact): Promise<void> {
+  if (orgLive()) {
+    if (!contactId) throw new Error('This contact is not yet saved. Refresh and try again.');
+    const { error } = await sb().rpc('org_update_contact', {
+      p_id: contactId, p_name: rec.name, p_role: rec.role || null, p_email: rec.email, p_phone: rec.phone || null, p_primary: rec.primary,
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  updateContact(agency.name, branch?.name ?? null, index, rec);
+}
+
+/** Remove a contact by its DB id (index used only in mock mode). */
+export async function removeContactLive(agency: Agency, branch: Branch | null, index: number, contactId: string | undefined): Promise<void> {
+  if (orgLive()) {
+    if (!contactId) throw new Error('This contact is not yet saved. Refresh and try again.');
+    const { error } = await sb().rpc('org_remove_contact', { p_id: contactId });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  removeContact(agency.name, branch?.name ?? null, index);
+}
+
+/** Set a contact as its owner's primary, by DB id (index used only in mock mode). */
+export async function setPrimaryLive(agency: Agency, branch: Branch | null, index: number, contactId: string | undefined): Promise<void> {
+  if (orgLive()) {
+    if (!contactId) throw new Error('This contact is not yet saved. Refresh and try again.');
+    const { error } = await sb().rpc('org_set_primary_contact', { p_id: contactId });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  setPrimaryContact(agency.name, branch?.name ?? null, index);
 }
 
 /** Derived counts for a partner (used by the Partners screen). */

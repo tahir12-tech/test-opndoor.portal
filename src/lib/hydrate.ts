@@ -68,6 +68,7 @@ function relTime(ts: string | null, status: string): string {
 
 function toContact(c: any): AgentContact {
   return {
+    id: c.id,
     name: c.name,
     email: c.email,
     phone: c.phone || '',
@@ -86,7 +87,10 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     client.rpc('list_managed_users'),
     client.from('agencies').select('id, name, group_name, review_state, partner_id, partner:partners(slug)'),
     client.from('branches').select('id, name, area, review_state, agency_id, partner_id'),
-    client.from('agent_contacts').select('id, name, email, phone, contact_role, is_primary, agency_id, branch_id'),
+    // Ordered oldest-first so the on-screen contact order matches the server's
+    // promote-oldest primary backstop (org_*_contact RPCs): the "promotes X to
+    // primary" consequence text then names the contact the backstop will pick.
+    client.from('agent_contacts').select('id, name, email, phone, contact_role, is_primary, agency_id, branch_id').order('created_at', { ascending: true }).order('id', { ascending: true }),
     client.from('applications').select(
       'id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, ' +
         'tenant_dob, tenant_email, tenant_phone, ' +
@@ -184,6 +188,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     const brs: Branch[] = (branchesByAgency[a.id] ?? []).map((b) => {
       const bApps = appsByBranch[b.id] ?? [];
       const branch: Branch = {
+        id: b.id,
         name: b.name,
         area: b.area || '—',
         referrers: new Set(bApps.map((x) => x.referrer_id)).size,
@@ -197,6 +202,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     });
     const aApps = appsByAgency[a.id] ?? [];
     const agency: Agency = {
+      id: a.id,
       partner: emb(a.partner)?.slug ?? partnerSlug.get(a.partner_id) ?? '',
       name: a.name,
       referrals: aApps.length,
