@@ -251,6 +251,8 @@ export type LeagueView = 'agency' | 'branch' | 'referrer';
 export interface LeagueRow {
   name: string;
   sub: string;
+  /** Owning partner display name, for the Partner column shown in All-partners scope. */
+  partner?: string;
   refs: number;
   fees: number;
   paid: number;

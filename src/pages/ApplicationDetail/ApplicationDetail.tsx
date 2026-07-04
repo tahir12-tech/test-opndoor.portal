@@ -421,8 +421,7 @@ export function ApplicationDetail() {
           </div>
         </div>
         <div className="rec-head__actions">
-          <Button variant="ghost" size="sm"><Icon name="share" /> Share</Button>
-          {isDeed && <Button variant="dark" size="sm"><Icon name="download" /> Download deed</Button>}
+          {isDeed && <Button variant="dark" size="sm" onClick={doDownloadDeed}><Icon name="download" /> Download deed</Button>}
         </div>
       </div>
 

@@ -167,10 +167,16 @@ export async function updatePartnerSettings(id: string, next: PartnerSettingsInp
 /** Recent partner-change audit entries (most recent first). Admin-scoped. */
 export async function getPartnerAudit(id: string): Promise<PartnerAuditEntry[]> {
   if (SUPABASE_ENABLED) {
+    // Resolve the partner id from the slug first, then filter partner_audit by
+    // partner_id directly. Filtering via an embedded resource (partner.slug on a
+    // !inner join) is fragile and returned nothing, so the panel never rendered
+    // (#70). A plain column filter is robust.
+    const { data: p } = await sb().from('partners').select('id').eq('slug', id).maybeSingle();
+    if (!p?.id) return [];
     const { data, error } = await sb()
       .from('partner_audit')
-      .select('field, old_value, new_value, actor, at, partner:partners!inner(slug)')
-      .eq('partner.slug', id)
+      .select('field, old_value, new_value, actor, at')
+      .eq('partner_id', p.id)
       .order('at', { ascending: false })
       .limit(20);
     if (error) throw new Error(error.message);

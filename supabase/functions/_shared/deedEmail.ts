@@ -57,34 +57,68 @@ function layout(inner: string, intendedFor: string): string {
   </table></body></html>`;
 }
 
-function deedAgentTemplate(p: { agentName: string; tenantName: string; propertyAddr: string; guaranteeRef: string; downloadUrl: string; intendedFor: string }): { subject: string; html: string } {
-  const subject = `Deed of Guarantee issued - ${p.guaranteeRef}`;
-  const greet = p.agentName ? `Dear ${p.agentName},` : "Hello,";
+function detailRow(label: string, value: string): string {
+  return `<tr>
+    <td style="padding:6px 0;font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};white-space:nowrap;vertical-align:top;">${label}</td>
+    <td style="padding:6px 0 6px 16px;font:600 14px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">${value}</td>
+  </tr>`;
+}
+
+// Owner-approved final copy. Greets the agency team by name (never a contact's
+// email address, #69); the recipient is a letting-agent branch with no portal
+// access, so the tone is comfort + completeness with no portal pitch.
+function deedAgentTemplate(p: {
+  agencyName: string; tenantTitle: string; tenantName: string; addr1: string; postcode: string;
+  tenancyStartLabel: string; guaranteeRef: string; downloadUrl: string; intendedFor: string;
+}): { subject: string; html: string } {
+  const teamName = (p.agencyName || "").trim();
+  const greet = teamName ? `Dear team at ${teamName},` : "Dear team,";
+  const propertyLine = [p.addr1, p.postcode].filter(Boolean).join(", ");
+  const tenantLine = [p.tenantTitle, p.tenantName].filter((x) => (x || "").trim()).join(" ").trim();
+  const subject = `Deed of Guarantee issued, ${p.guaranteeRef}, ${p.addr1}`;
   const button = p.downloadUrl
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 8px;"><tr><td>
         <a href="${p.downloadUrl}" style="display:inline-block;background:${HELIOTROPE};background-image:linear-gradient(135deg,${HELIOTROPE},${HELIOTROPE_DEEP});color:#ffffff;text-decoration:none;font:700 15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:13px 26px;border-radius:10px;">Download the Deed of Guarantee</a>
-      </td></tr></table>
-      <p style="margin:8px 0 0;font-size:12px;color:${INK_SOFT};">This secure download link expires in a few days; contact opndoor if you need it re-sent.</p>`
-    : `<p style="margin:0;font-size:13px;color:${INK_SOFT};">The signed deed is on file with opndoor. Contact us to receive a copy.</p>`;
+      </td></tr></table>`
+    : `<p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">The signed deed is on file with opndoor. Contact us quoting the reference to receive a copy.</p>`;
   const inner = `
     <p style="margin:0 0 14px;">${greet}</p>
-    <p style="margin:0 0 14px;">The Deed of Guarantee for <b>${p.tenantName}</b> at ${p.propertyAddr} has been signed and issued. opndoor is now the professional guarantor for this tenancy.</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid rgba(39,29,95,0.12);border-radius:12px;"><tr><td style="padding:14px 18px;">
-      <div style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Guarantee reference</div>
-      <div style="font:800 20px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:2px;">${p.guaranteeRef}</div>
+    <p style="margin:0 0 16px;">The Deed of Guarantee for <b>${tenantLine}</b> at ${propertyLine} has been signed and issued. opndoor is now the professional guarantor for this tenancy, and nothing further is needed from you, the guarantee is in place.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid rgba(39,29,95,0.12);border-radius:12px;background:${LILAC};"><tr><td style="padding:14px 18px;">
+      <div style="font:700 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${HELIOTROPE_DEEP};margin-bottom:6px;">Guarantee details</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        ${detailRow("Tenant", tenantLine)}
+        ${detailRow("Property", propertyLine)}
+        ${detailRow("Tenancy start", p.tenancyStartLabel)}
+        ${detailRow("Guarantee period", "12 months from tenancy start")}
+        ${detailRow("Reference", p.guaranteeRef)}
+      </table>
     </td></tr></table>
-    ${button}`;
+    ${button}
+    <p style="margin:12px 0 0;font-size:13px;color:${INK_SOFT};">Please keep the deed with the tenancy paperwork, it's the reference for any claim under the guarantee. The download link expires in a few days; if you ever need the deed re-sent, contact us quoting the reference.</p>`;
   return { subject, html: layout(inner, p.intendedFor) };
 }
 
 export interface DeedTarget {
   appId: string;
   ref: string;
+  tenantTitle: string;
   tenantName: string;
-  propertyAddr: string;
+  addr1: string;
+  postcode: string;
+  /** ISO tenancy start date (yyyy-mm-dd); rendered dd/mm/yyyy in the email. */
+  tenancyStart: string | null;
+  agencyName: string;
   pdfPath: string | null;
 }
 export interface DeedRecipient { email: string; name: string }
+
+/** dd/mm/yyyy from an ISO date, or an em-dash-free placeholder. */
+function ddmmyyyy(iso: string | null): string {
+  if (!iso) return "the tenancy start date";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
 
 /**
  * Deliver the issued deed to the resolved claim contact: mint a signed download
@@ -99,9 +133,12 @@ export async function deliverDeedToAgent(service: any, target: DeedTarget, recip
     downloadUrl = signed?.signedUrl ?? "";
   }
   const tpl = deedAgentTemplate({
-    agentName: recipient.name,
+    agencyName: target.agencyName,
+    tenantTitle: target.tenantTitle,
     tenantName: target.tenantName,
-    propertyAddr: target.propertyAddr,
+    addr1: target.addr1,
+    postcode: target.postcode,
+    tenancyStartLabel: ddmmyyyy(target.tenancyStart),
     guaranteeRef: target.ref,
     downloadUrl,
     intendedFor: recipient.email,

@@ -38,6 +38,8 @@ interface CtConfirm {
   confirmLabel: string;
   danger?: boolean;
   success?: string;
+  /** A refusal, not a choice: one dismiss button, no destructive action (#72). */
+  blocking?: boolean;
   /** Whether to re-hydrate after the action (mutations yes, a pure discard no). */
   refreshAfter: boolean;
   run: () => Promise<void>;
@@ -69,6 +71,14 @@ function fmtK(n: number): string {
 
 const goIcon = <span className="statlink__go"><Icon name="arrowRight" strokeWidth={2.2} /></span>;
 const ctInitials = (n: string) => n.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+/** A contact often has no real name (email is the load-bearing field), and older
+    records stored the email in the name column. Treat a blank or email-shaped
+    name as "no name" so we never render an email address as a person's name (#69). */
+const realName = (name: string, email: string): string => {
+  const n = (name || '').trim();
+  if (!n || n.includes('@') || n.toLowerCase() === (email || '').trim().toLowerCase()) return '';
+  return n;
+};
 
 /** The effective-primary-contact summary line shown under an agency or branch name. */
 function ContactSummary({ agency, branch, canManage, onManage }: { agency: Agency; branch: Branch | null; canManage: boolean; onManage: () => void }) {
@@ -82,7 +92,7 @@ function ContactSummary({ agency, branch, canManage, onManage }: { agency: Agenc
   return (
     <div className="contact-line">
       <Icon name="mail" />
-      <span><b>{ep.contact.name}</b> · {ep.contact.email}</span>
+      <span>{realName(ep.contact.name, ep.contact.email) ? <><b>{realName(ep.contact.name, ep.contact.email)}</b> · {ep.contact.email}</> : <b>{ep.contact.email}</b>}</span>
       {branch && ep.inherited && <span className="cl-inherit">(agency default)</span>}
       {manageBtn}
     </div>
@@ -264,6 +274,18 @@ export function OrgManagement() {
     if (!ctAgency) return;
     const c = ctContacts[index];
     if (!c) return;
+    // #72: an agency's LAST contact cannot be removed - deeds must always have a
+    // delivery address. Refuse (do not warn-and-proceed); add a replacement first.
+    if (!ctBranchName && ctContacts.length === 1) {
+      const inheriting = (ctAgency.branches ?? []).filter((b) => !(b.contacts && b.contacts.length)).length;
+      setCtConfirm({
+        title: 'Add a replacement contact first',
+        body: <><b>{ctAgencyName}</b> must keep at least one contact so its deeds always have a delivery address{inheriting ? <> ({inheriting} {inheriting === 1 ? 'branch inherits' : 'branches inherit'} it)</> : null}. Add a replacement contact below, then remove this one.</>,
+        confirmLabel: 'Got it', blocking: true, refreshAfter: false,
+        run: async () => {},
+      });
+      return;
+    }
     setCtConfirm({
       title: `Remove ${c.name}?`,
       body: removeConsequence(index),
@@ -520,8 +542,14 @@ export function OrgManagement() {
             <div className="ct-confirm__title">{ctConfirm.title}</div>
             <div className="ct-confirm__body">{ctConfirm.body}</div>
             <div className="ct-confirm__actions">
-              <Button variant="ghost" size="sm" onClick={() => setCtConfirm(null)} disabled={busy}>Cancel</Button>
-              <Button variant="primary" size="sm" className={ctConfirm.danger ? 'btn--danger' : undefined} onClick={runCtConfirm} disabled={busy}>{busy ? 'Working…' : ctConfirm.confirmLabel}</Button>
+              {ctConfirm.blocking ? (
+                <Button variant="primary" size="sm" onClick={() => setCtConfirm(null)} disabled={busy}>{ctConfirm.confirmLabel}</Button>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => setCtConfirm(null)} disabled={busy}>Cancel</Button>
+                  <Button variant="primary" size="sm" className={ctConfirm.danger ? 'btn--danger' : undefined} onClick={runCtConfirm} disabled={busy}>{busy ? 'Working…' : ctConfirm.confirmLabel}</Button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -544,8 +572,8 @@ export function OrgManagement() {
               <div className="ct-row" key={c.id ?? i}>
                 <span className="ct-av">{ctInitials(c.name)}</span>
                 <div className="ct-main">
-                  <div className="ct-name">{c.name}{c.primary && <span className="ct-primary">Primary</span>}</div>
-                  <div className="ct-sub">{c.role ? `${c.role} · ` : ''}{c.email}{c.phone ? ` · ${c.phone}` : ''}</div>
+                  <div className="ct-name">{realName(c.name, c.email) || c.email}{c.primary && <span className="ct-primary">Primary</span>}</div>
+                  <div className="ct-sub">{[c.role, realName(c.name, c.email) ? c.email : null, c.phone].filter(Boolean).join(' · ')}</div>
                 </div>
                 <div className="ct-actions">
                   {!c.primary && <button onClick={() => makePrimary(i)} disabled={busy}>Set primary</button>}
@@ -558,12 +586,14 @@ export function OrgManagement() {
         </div>
 
         <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16, marginTop: 6 }}>
-          <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 13.5, marginBottom: 12 }}>{ctEditIndex !== null ? 'Edit contact' : 'Add a contact'}</div>
+          <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>{ctEditIndex !== null ? 'Edit contact' : 'Add a contact'}</div>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-mute)', margin: '0 0 12px' }}>The email is what matters. It is where the Deed of Guarantee is delivered.</p>
           <div className="form-grid">
-            <Field label="Name" htmlFor="ct-name"><input id="ct-name" type="text" autoComplete="off" value={ctName} onChange={(e) => setCtName(e.target.value)} /></Field>
+            <Field span2 label={<>Contact email <span className="req" aria-hidden="true">*</span></>} htmlFor="ct-email"><input id="ct-email" type="email" placeholder="deeds@agency.co.uk" autoComplete="off" value={ctEmail} onChange={(e) => setCtEmail(e.target.value)} /></Field>
+            <div className="field span-2" style={{ marginTop: -6 }}><span className="hint">Use a shared work address (e.g. deeds@agency.co.uk) rather than a personal one. Deeds must always deliver, even when staff change.</span></div>
+            <Field label="Name" htmlFor="ct-name" hint="Optional"><input id="ct-name" type="text" placeholder="e.g. Deeds team" autoComplete="off" value={ctName} onChange={(e) => setCtName(e.target.value)} /></Field>
             <Field label="Role" htmlFor="ct-role" hint="Optional"><input id="ct-role" type="text" placeholder="e.g. Branch manager" autoComplete="off" value={ctRole} onChange={(e) => setCtRole(e.target.value)} /></Field>
-            <Field label="Email" htmlFor="ct-email"><input id="ct-email" type="email" autoComplete="off" value={ctEmail} onChange={(e) => setCtEmail(e.target.value)} /></Field>
-            <Field label="Phone" htmlFor="ct-phone" hint="Optional"><input id="ct-phone" type="text" autoComplete="off" value={ctPhone} onChange={(e) => setCtPhone(e.target.value)} /></Field>
+            <Field className="span-2" label="Phone" htmlFor="ct-phone" hint="Optional"><input id="ct-phone" type="text" autoComplete="off" value={ctPhone} onChange={(e) => setCtPhone(e.target.value)} /></Field>
             <label className="field span-2" style={{ flexDirection: 'row', alignItems: 'center', gap: 9, display: 'flex' }}>
               <input type="checkbox" checked={ctPrimary} onChange={(e) => setCtPrimary(e.target.checked)} style={{ width: 'auto' }} />
               <span style={{ fontSize: 13, color: 'var(--ink-soft)', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>Primary contact (receives the deed by default)</span>

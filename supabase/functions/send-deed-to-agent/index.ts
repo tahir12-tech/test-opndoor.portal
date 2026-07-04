@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
     // RLS-scoped read (only someone who can see the application resolves it).
     const { data: app, error: appErr } = await userClient
       .from("applications")
-      .select("id, guarantee_ref, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode, executed_pdf_path")
+      .select("id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode, tenancy_start, executed_pdf_path, agency:agencies(name)")
       .eq("guarantee_ref", ref).maybeSingle();
     if (appErr) return json({ ok: false, error: appErr.message }, 400);
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
@@ -62,11 +62,16 @@ Deno.serve(async (req) => {
     }
 
     const service = createClient(SUPABASE_URL, SERVICE);
+    const agencyName = (Array.isArray(app.agency) ? app.agency[0]?.name : (app.agency as { name?: string } | null)?.name) ?? "";
     const out = await deliverDeedToAgent(service, {
       appId: app.id,
       ref: app.guarantee_ref,
+      tenantTitle: app.tenant_title ?? "",
       tenantName: `${app.tenant_first_name} ${app.tenant_last_name}`,
-      propertyAddr: [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", "),
+      addr1: app.prop_addr1 ?? "",
+      postcode: app.prop_postcode ?? "",
+      tenancyStart: app.tenancy_start ?? null,
+      agencyName,
       pdfPath: app.executed_pdf_path,
     }, { email: sentTo, name: recipientName }, `sent by ${actor}`);
 

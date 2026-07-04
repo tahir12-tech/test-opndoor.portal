@@ -19,6 +19,7 @@
 import Stripe from "npm:stripe@^17";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateDeed } from "../_shared/pandadoc.ts";
+import { deliverRefund } from "../_shared/refundEmail.ts";
 
 Deno.serve(async (req) => {
   const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
@@ -67,13 +68,29 @@ Deno.serve(async (req) => {
       const pi = typeof c.payment_intent === "string" ? c.payment_intent : c.payment_intent?.id ?? null;
       const refundId = c.refunds?.data?.[0]?.id ?? c.id;
       if (pi) {
-        await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: (c.amount_refunded ?? 0) / 100 });
-        const { data: appRow } = await service.from("applications").select("id, refund_after_start").eq("stripe_payment_intent_id", pi).maybeSingle();
+        const refundAmount = (c.amount_refunded ?? 0) / 100;
+        await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
+        const { data: appRow } = await service.from("applications")
+          .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode")
+          .eq("stripe_payment_intent_id", pi).maybeSingle();
         if (appRow) {
           await service.from("activity_log").insert({ application_id: appRow.id, kind: "refunded", message: "Payment refunded in Stripe.", actor: "Stripe" });
           if (appRow.refund_after_start) {
             await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
           }
+          // Branded refund confirmation to the tenant (redirected to the review
+          // address in test mode). Idempotent: the whole charge.refunded block
+          // runs once per event via the stripe_events dedup above.
+          const amountGBP = `£${refundAmount.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+          await deliverRefund(service, {
+            appId: appRow.id,
+            tenantEmail: appRow.tenant_email,
+            title: appRow.tenant_title ?? "",
+            lastName: appRow.tenant_last_name ?? "",
+            propertyAddr: [appRow.prop_addr1, appRow.prop_postcode].filter(Boolean).join(", "),
+            amount: amountGBP,
+            guaranteeRef: appRow.guarantee_ref,
+          });
         }
       }
     }

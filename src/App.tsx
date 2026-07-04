@@ -34,6 +34,8 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       {/* Public: the recovery link lands here to set a new password. */}
       <Route path="/reset-password" element={<ResetPassword />} />
+      {/* Public: the team-invite link lands here to set a password, then TOTP. */}
+      <Route path="/accept-invite" element={<ResetPassword mode="invite" />} />
 
       {/* Public, unauthenticated tenant payment pages (post-Stripe redirect). */}
       <Route path="/pay/confirmed" element={<PaymentConfirmed />} />

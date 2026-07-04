@@ -14,8 +14,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  addUser, getPartner, getPartners, getUserAudit, getUsers, homePartner, partnerName,
-  resetUserMfa, resetUserPassword, setUserStatus, updateUserRole, userEmail, userPartnerName,
+  getPartner, getPartners, getUserAudit, getUsers, homePartner, inviteUser, partnerName,
+  resendInvite, resetUserMfa, resetUserPassword, setUserStatus, updateUserRole, userEmail, userPartnerName,
   type ManagedUser, type Role, type UserAuditEntry,
 } from '@/data';
 import { ALL_PARTNERS } from '@/data';
@@ -204,7 +204,10 @@ export function UserManagement() {
       void doDirect(() => resetUserPassword(u.id), `Password reset link sent to ${userEmail(u)}.`);
       return;
     }
-    if (action === 'resend') { toast(`Invite resent to ${userEmail(u)}.`); return; }
+    if (action === 'resend') {
+      void doDirect(() => resendInvite(u.id), `Invitation resent to ${userEmail(u)}.`);
+      return;
+    }
     if (action === 'reset-2fa') {
       setConfirm({
         title: `Reset 2FA for ${u.name}?`,
@@ -255,11 +258,22 @@ export function UserManagement() {
     setAddPartnerId(selectedPartner !== ALL_PARTNERS ? selectedPartner : homePartner());
     setAddOpen(true);
   }
-  function sendInvite() {
-    const rec = addUser({ firstName: addFirst.trim(), lastName: addLast.trim(), email: addEmail.trim(), role: addRole, partner: addPartnerId });
-    refresh();
-    setAddOpen(false);
-    toast(`${rec.name} invited as ${ROLE_META[addRole][0]}${addRole === 'superadmin' ? '' : ` at ${partnerName(rec.partner)}`}.`);
+  async function sendInvite() {
+    const email = addEmail.trim();
+    if (busy) return;
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Enter a valid work email to invite.'); return; }
+    setBusy(true);
+    try {
+      const rec = await inviteUser({ firstName: addFirst.trim(), lastName: addLast.trim(), email, role: addRole, partner: addPartnerId });
+      await refreshData();
+      refresh();
+      setAddOpen(false);
+      toast(`Invitation sent to ${email} as ${ROLE_META[addRole][0]}${addRole === 'superadmin' ? '' : ` at ${partnerName(rec.partner)}`}.`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not send the invitation.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   // Save-role opens a confirmation stating the consequence (then runs the update).
@@ -407,7 +421,7 @@ export function UserManagement() {
         width={560}
         title={teamMode ? 'Add opndoor team member' : 'Add user'}
         sub={teamMode ? 'Add an opndoor admin. They sit above all partners with full control of the portal.' : 'Invite a partner team member and set their access level.'}
-        footer={<><Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" onClick={sendInvite} arrow>Send invite</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setAddOpen(false)} disabled={busy}>Cancel</Button><Button variant="primary" onClick={sendInvite} arrow disabled={busy}>{busy ? 'Sending…' : 'Send invite'}</Button></>}
       >
         <div className="form-grid">
           <Field label="First name"><input type="text" placeholder="James" value={addFirst} onChange={(e) => setAddFirst(e.target.value)} /></Field>
@@ -441,18 +455,22 @@ export function UserManagement() {
             <RoleOptions options={editRoleOptions} selected={editRole} onSelect={setEditRole} />
           </Field>
         )}
-        {editAudit.length > 0 && (
+        {!editTargetIsTeam && (
           <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, marginTop: 14 }}>
             <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Recent changes</div>
-            <ul className="pm-audit">
-              {editAudit.map((e, i) => (
-                <li key={i} className="pm-audit__row">
-                  <span className="pm-audit__field">{AUDIT_LABEL[e.action] ?? e.action}</span>
-                  <span className="pm-audit__delta">{e.oldValue} → <b>{e.newValue}</b></span>
-                  <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
-                </li>
-              ))}
-            </ul>
+            {editAudit.length > 0 ? (
+              <ul className="pm-audit">
+                {editAudit.map((e, i) => (
+                  <li key={i} className="pm-audit__row">
+                    <span className="pm-audit__field">{AUDIT_LABEL[e.action] ?? e.action}</span>
+                    <span className="pm-audit__delta">{e.oldValue} → <b>{e.newValue}</b></span>
+                    <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ fontSize: 13, color: 'var(--ink-mute)', margin: 0 }}>No changes recorded yet. Role changes, deactivations and 2FA resets for this user will appear here.</p>
+            )}
           </div>
         )}
       </Modal>

@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     if (insErr) continue; // duplicate delivery -> skip
 
     const { data: app } = await service.from("applications")
-      .select("id, guarantee_ref, branch_id, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode")
+      .select("id, guarantee_ref, branch_id, tenant_title, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode, tenancy_start, agency:agencies(name)")
       .eq("pandadoc_document_id", docId).maybeSingle();
 
     if (status === "document.completed") {
@@ -67,11 +67,16 @@ Deno.serve(async (req) => {
         const { data: contact } = await service.rpc("effective_primary_contact", { p_branch: app.branch_id });
         const eff = Array.isArray(contact) ? contact[0] : contact;
         if (eff?.email) {
+          const agencyName = (Array.isArray(app.agency) ? app.agency[0]?.name : (app.agency as { name?: string } | null)?.name) ?? "";
           await deliverDeedToAgent(service, {
             appId: app.id,
             ref: app.guarantee_ref,
+            tenantTitle: app.tenant_title ?? "",
             tenantName: `${app.tenant_first_name} ${app.tenant_last_name}`,
-            propertyAddr: [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", "),
+            addr1: app.prop_addr1 ?? "",
+            postcode: app.prop_postcode ?? "",
+            tenancyStart: app.tenancy_start ?? null,
+            agencyName,
             pdfPath: path,
           }, { email: eff.email, name: eff.name ?? "" }, "automatic");
         } else {

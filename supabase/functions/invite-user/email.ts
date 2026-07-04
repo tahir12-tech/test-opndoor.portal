@@ -1,0 +1,80 @@
+// =====================================================================
+// Branded email for the team-invite flow (Resend). Same shared shell as the
+// other portal emails: sendEmail() ALWAYS redirects to EMAIL_REVIEW_ADDRESS in
+// this test build (the real recipient appears only in the "intended for"
+// banner), plus inviteEmailTemplate wrapping the branded layout().
+// =====================================================================
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
+const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
+const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
+
+export interface SendResult {
+  ok: boolean;
+  error?: string;
+  to?: string;
+}
+
+/** Send a message. Always redirects to the review address in this test build. */
+export async function sendEmail(opts: { subject: string; html: string }): Promise<SendResult> {
+  if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured (RESEND_API_KEY not set)." };
+  if (!REVIEW_ADDRESS) return { ok: false, error: "Test review address (EMAIL_REVIEW_ADDRESS) is not set." };
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [REVIEW_ADDRESS], reply_to: REPLY_TO, subject: opts.subject, html: opts.html }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      return { ok: false, error: `Resend responded ${res.status}: ${detail.slice(0, 200)}`, to: REVIEW_ADDRESS };
+    }
+    return { ok: true, to: REVIEW_ADDRESS };
+  } catch (e) {
+    return { ok: false, error: `Resend request failed: ${e instanceof Error ? e.message : String(e)}`, to: REVIEW_ADDRESS };
+  }
+}
+
+const VALHALLA = "#271d5f";
+const HELIOTROPE = "#d364fb";
+const HELIOTROPE_DEEP = "#b54de0";
+const INK_SOFT = "#5b4d86";
+const LILAC = "#f8eff9";
+
+function layout(title: string, inner: string, intendedFor?: string): string {
+  const testBanner = intendedFor
+    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
+    : "";
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
+        <tr><td style="background:${VALHALLA};padding:22px 28px;">
+          <span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:-0.02em;color:#ffffff;">opndoor</span>
+          <span style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
+        </td></tr>
+        ${testBanner}
+        <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">
+          ${inner}
+        </td></tr>
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">
+          opndoor. Questions? Reply to this email or contact ${REPLY_TO}.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table></body></html>`;
+}
+
+export function inviteEmailTemplate(p: { link: string; intendedFor: string; roleLabel: string; orgLine: string }): { subject: string; html: string } {
+  const subject = "You've been invited to the opndoor portal";
+  const inner = `
+    <p style="margin:0 0 14px;">Hello,</p>
+    <p style="margin:0 0 14px;">You've been invited to the opndoor Guarantee Referral Portal as <b>${p.roleLabel}</b>${p.orgLine}. The portal is where you refer failed-referencing tenants to opndoor's professional guarantor service and track each application through to deed issued.</p>
+    <p style="margin:0 0 16px;">Click below to accept your invitation and set your password.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 20px;"><tr><td>
+      <a href="${p.link}" style="display:inline-block;background:${HELIOTROPE};background-image:linear-gradient(135deg,${HELIOTROPE},${HELIOTROPE_DEEP});color:#ffffff;text-decoration:none;font:700 15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:13px 26px;border-radius:10px;">Accept invitation</a>
+    </td></tr></table>
+    <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">After setting your password you'll set up two-factor authentication with an authenticator app, then you're in. For your security this invitation expires in a few days.</p>
+    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If you weren't expecting this, you can ignore this email. If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.link}</span></p>`;
+  return { subject, html: layout(subject, inner, p.intendedFor) };
+}

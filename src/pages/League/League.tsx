@@ -9,7 +9,7 @@
    ===================================================================== */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, type LeagueRow, type LeagueView } from '@/data';
+import { ALL_PARTNERS, buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, getPeriods, type LeagueRow, type LeagueView } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +17,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Card, CardFoot } from '@/components/ui/Card';
 import { Eyebrow } from '@/components/ui/Eyebrow';
 import { RoleOnly } from '@/components/ui/RoleOnly';
+import { PartnerSelect, PeriodSelect } from '@/components/ui/Select';
 import './League.css';
 
 const PAGE = 15;
@@ -61,7 +62,7 @@ function cellFor(col: SortKey, r: LeagueRow) {
 
 export function League() {
   usePageMeta('league', 'League tables', ['Home', 'League tables']);
-  const { role, partnerScope, period } = useSession();
+  const { role, partnerScope, period, setPeriod } = useSession();
   const [params] = useSearchParams();
 
   const initialView = (params.get('view') as LeagueView) || 'agency';
@@ -73,6 +74,8 @@ export function League() {
   const [partner, setPartner] = useState('');
 
   const cols = COLS[view];
+  // Show the partner tag only when genuinely viewing across partners (#52).
+  const showPartner = partnerScope === ALL_PARTNERS && !partner;
   const all = getLeague(view, { role, scope: partnerScope, partner, period });
 
   const filtered = useMemo(() => {
@@ -117,11 +120,12 @@ export function League() {
 
       <div className="page-head">
         <div>
-          <Eyebrow>Performance</Eyebrow>
+          <Eyebrow>Performance · {period.label}</Eyebrow>
           <h1 className="page-head__title" style={{ marginTop: 10 }}>League tables</h1>
           <p className="page-head__sub">Every agency, branch and referrer ranked in full. Search, sort by any metric, and page through the whole book. The dashboard shows the top ten; this is the complete list.</p>
         </div>
         <div className="page-head__actions">
+          <PeriodSelect ariaLabel="League time period" value={period.id} onChange={setPeriod} options={getPeriods().map((p) => ({ value: p.id, label: p.label }))} />
           <Button variant="dark" size="sm" onClick={() => void exportBranded(buildLeagueDoc(role, partnerScope, partner, period))} title="Downloads all three league tables as a branded Excel workbook">
             <Icon name="download" /> Export
           </Button>
@@ -142,13 +146,12 @@ export function League() {
           <input type="text" placeholder="Search by name" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
         </div>
         <RoleOnly roles={['superadmin']}>
-          <span className="fchip">
-            <Icon name="shield" />Partner:{' '}
-            <select value={partner} onChange={(e) => { setPartner(e.target.value); setPage(0); }}>
-              <option value="">All partners</option>
-              {getPartners().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </span>
+          <PartnerSelect
+            ariaLabel="Partner"
+            value={partner || ALL_PARTNERS}
+            onChange={(v) => { setPartner(v === ALL_PARTNERS ? '' : v); setPage(0); }}
+            options={[{ value: ALL_PARTNERS, label: 'All partners' }, ...getPartners().map((p) => ({ value: p.id, label: p.name }))]}
+          />
         </RoleOnly>
         <span className="lt-count">Showing <b>{total ? `${start + 1}-${Math.min(start + PAGE, total)}` : '0'}</b> of <b>{total}</b></span>
       </div>
@@ -183,7 +186,10 @@ export function League() {
                     <td className="num"><span className={`rank${rank <= 3 ? ' top' : ''}`}>{rank}</span></td>
                     {cols.map((c, ci) =>
                       ci === 0 ? (
-                        <td key={c[0]}><div className="lt-name">{r.name}</div><div className="lt-sub">{r.sub}</div></td>
+                        <td key={c[0]}>
+                          <div className="lt-name">{r.name}{showPartner && r.partner ? <span className="lt-partner">{r.partner}</span> : null}</div>
+                          <div className="lt-sub">{r.sub}</div>
+                        </td>
                       ) : (
                         <td key={c[0]} className="num">{cellFor(c[0], r)}</td>
                       ),

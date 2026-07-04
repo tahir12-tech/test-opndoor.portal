@@ -231,18 +231,22 @@ export function PartnerManagement() {
           </div>
         </div>
 
-        {editingId && audit.length > 0 && (
+        {editingId && (
           <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16, marginTop: 16 }}>
             <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Recent changes</div>
-            <ul className="pm-audit">
-              {audit.map((e, i) => (
-                <li key={i} className="pm-audit__row">
-                  <span className="pm-audit__field">{auditField(e.field)}</span>
-                  <span className="pm-audit__delta">{e.oldValue} → <b>{e.newValue}</b></span>
-                  <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
-                </li>
-              ))}
-            </ul>
+            {audit.length > 0 ? (
+              <ul className="pm-audit">
+                {audit.map((e, i) => (
+                  <li key={i} className="pm-audit__row">
+                    <span className="pm-audit__field">{auditField(e.field)}</span>
+                    <span className="pm-audit__delta">{e.oldValue} → <b>{e.newValue}</b></span>
+                    <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ fontSize: 13, color: 'var(--ink-mute)', margin: 0 }}>No changes recorded yet. Edits to this partner's name, status, go-live date or commission rates will appear here.</p>
+            )}
           </div>
         )}
       </Modal>

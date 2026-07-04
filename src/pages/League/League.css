@@ -156,3 +156,16 @@
 .lt-empty.is-shown {
   display: block;
 }
+
+/* Partner tag shown beside the name in All-partners scope (#52). */
+.lt-partner {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--white-lilac, #f2eefb);
+  color: var(--heliotrope-deep, #b54de0);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}

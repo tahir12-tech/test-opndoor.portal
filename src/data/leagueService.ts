@@ -57,16 +57,15 @@ export function getLeague(view: LeagueView, opts: LeagueOpts): LeagueRow[] {
           const fees = feesOf(a);
           const [sp, pd] = convFor('agency', a.name);
           const cv = sp * pd;
-          const showP = role === 'superadmin';
-          const sub = `${a.branches ? a.branches.length : 0} branches${showP ? ` · ${partnerName(a.partner || HOME_PARTNER)}` : ''}`;
-          rows.push({ name: a.name, sub, refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
+          const sub = `${a.branches ? a.branches.length : 0} branches`;
+          rows.push({ name: a.name, sub, partner: partnerName(a.partner || HOME_PARTNER), refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
         } else {
           (a.branches || []).forEach((b) => {
             const refs = b.referrals || 0;
             const fees = feesOf(b);
             const [sp, pd] = convFor('branch', b.name);
             const cv = sp * pd;
-            rows.push({ name: b.name, sub: `${a.name} · ${b.area || ''}`, refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
+            rows.push({ name: b.name, sub: `${a.name} · ${b.area || ''}`, partner: partnerName(a.partner || HOME_PARTNER), refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
           });
         }
       });

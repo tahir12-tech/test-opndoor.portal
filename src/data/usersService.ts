@@ -12,6 +12,7 @@
 import type { Role, User, UserStatus } from './types';
 import { ALL_PARTNERS } from './types';
 import { getSelectedPartner, homePartner, partnerName } from './partnersService';
+import { functionErrorMessage } from './paymentService';
 import { SUPABASE_ENABLED, sb } from '@/lib/supabase';
 
 // [name, role, lastActive, status, partner] — ported from user-management.html
@@ -184,6 +185,40 @@ export function addUser(input: AddUserInput): ManagedUser {
   const rec: ManagedUser = { id: `u${USERS.length}_${Math.round(performance.now())}`, name, email: input.email.trim() || emailOf(name), role: input.role, lastActive: 'Pending invite', status: 'pending', partner };
   USERS.push(rec);
   return rec;
+}
+
+/** Invite a new user: in live mode the invite-user Edge Function creates the
+    auth user + public.users row and sends a branded invite email (redirected to
+    the review address in test mode) that lands on /accept-invite. Mock mode just
+    adds the local pending record. The real row appears on the next hydration. */
+export async function inviteUser(input: AddUserInput): Promise<ManagedUser> {
+  if (SUPABASE_ENABLED) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const { data, error } = await sb().functions.invoke('invite-user', {
+      body: { firstName: input.firstName.trim(), lastName: input.lastName.trim(), email: input.email.trim(), role: input.role, partner: input.partner, origin },
+    });
+    if (error) throw new Error(await functionErrorMessage(error, 'Could not send the invitation.'));
+    if (!data?.ok) throw new Error(data?.error || 'Could not send the invitation.');
+    const partner = input.role === 'superadmin' ? 'opndoor' : input.partner || homePartner();
+    const name = `${input.firstName} ${input.lastName}`.trim() || input.email.trim();
+    return { id: `pending_${input.email.trim()}`, name, email: input.email.trim(), role: input.role, lastActive: 'Pending invite', status: 'pending', partner };
+  }
+  return addUser(input);
+}
+
+/** Resend an invitation (a fresh set-password link) to a pending/known user. */
+export async function resendInvite(id: string): Promise<void> {
+  const u = USERS.find((x) => x.id === id);
+  if (!u) throw new Error('User not found.');
+  if (SUPABASE_ENABLED) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const parts = (u.name || '').trim().split(/\s+/);
+    const { data, error } = await sb().functions.invoke('invite-user', {
+      body: { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' '), email: userEmail(u), role: u.role, partner: u.partner === 'opndoor' ? '' : u.partner, origin },
+    });
+    if (error) throw new Error(await functionErrorMessage(error, 'Could not resend the invitation.'));
+    if (!data?.ok) throw new Error(data?.error || 'Could not resend the invitation.');
+  }
 }
 
 /** Display name of a user's partner (or "opndoor"). */
