@@ -368,6 +368,14 @@ export interface CreateReferralInput {
   tenancyStart: string;
   agency: string;
   branch: string;
+  /** On-the-fly org creation: whether the agency/branch were created inline, and
+      the contact to capture (agency contact email required when agencyNew). */
+  agencyNew?: boolean;
+  branchNew?: boolean;
+  agencyContactEmail?: string;
+  agencyContactName?: string;
+  agencyContactPhone?: string;
+  branchContactEmail?: string;
 }
 
 /**
@@ -400,6 +408,10 @@ export async function createReferral(input: CreateReferralInput): Promise<Create
       dob: input.dob || null, email: input.email, phone: input.phone,
       addr1: input.addr1, addr2: input.addr2, city: input.city, county: input.county, postcode: input.postcode,
       rent: input.rent, tenancyStart: input.tenancyStart || null,
+      agencyContactEmail: input.agencyContactEmail || null,
+      agencyContactName: input.agencyContactName || null,
+      agencyContactPhone: input.agencyContactPhone || null,
+      branchContactEmail: input.branchContactEmail || null,
     },
   });
   if (error) {

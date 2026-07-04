@@ -200,22 +200,6 @@ export interface HelpContent {
 }
 export type HelpResourceSection = 'gettingStarted' | 'templates';
 
-/* ---------- Reconciliation ---------- */
-export type HubspotState = 'synced' | 'pending' | 'none';
-export interface ReconciliationRecord {
-  id: string;
-  type: 'agency' | 'branch';
-  name: string;
-  parent: string | null;
-  by: string;
-  when: string;
-  refs: number;
-  match: string | null;
-  score: number;
-  hs: HubspotState;
-  hsCo: string | null;
-}
-
 /* ---------- Analytics ---------- */
 export interface Period {
   id: string;

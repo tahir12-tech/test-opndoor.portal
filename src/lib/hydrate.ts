@@ -84,8 +84,8 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     // Admin user list via RPC: TRUTHFUL last-active (auth.users.last_sign_in_at)
     // and status/role, visibility-scoped like the users_select RLS policy.
     client.rpc('list_managed_users'),
-    client.from('agencies').select('id, name, group_name, unreviewed, partner_id, partner:partners(slug)'),
-    client.from('branches').select('id, name, area, unreviewed, agency_id, partner_id'),
+    client.from('agencies').select('id, name, group_name, review_state, partner_id, partner:partners(slug)'),
+    client.from('branches').select('id, name, area, review_state, agency_id, partner_id'),
     client.from('agent_contacts').select('id, name, email, phone, contact_role, is_primary, agency_id, branch_id'),
     client.from('applications').select(
       'id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, ' +
@@ -192,7 +192,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
         fees: feesNet(bApps),
         contacts: (contactsByBranch[b.id] ?? []).map(toContact),
       };
-      if (b.unreviewed) branch.unreviewed = true;
+      if (b.review_state === 'pending_review') branch.unreviewed = true;
       return branch;
     });
     const aApps = appsByAgency[a.id] ?? [];
@@ -206,7 +206,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
       branches: brs,
     };
     if (a.group_name) agency.group = a.group_name;
-    if (a.unreviewed) agency.unreviewed = true;
+    if (a.review_state === 'pending_review') agency.unreviewed = true;
     return agency;
   });
 

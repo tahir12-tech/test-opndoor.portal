@@ -4,7 +4,7 @@
    reconciliation badge count comes from the queue.
    ===================================================================== */
 import { Link, useNavigate } from 'react-router-dom';
-import { getQueue } from '@/data';
+import { reconciliationPendingCount } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { NAV } from '@/constants/nav';
@@ -12,10 +12,12 @@ import { usePageMetaValue } from './pageMeta';
 import { Icon } from '@/components/ui/Icon';
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  // useSession() re-renders on dataVersion bumps (re-hydration), so the badge
+  // reflects the current pending-review count after a confirm or a new referral.
   const { role, user, signOut } = useSession();
   const navigate = useNavigate();
   const { active } = usePageMetaValue();
-  const reconcileBadge = getQueue().length;
+  const reconcileBadge = reconciliationPendingCount();
 
   return (
     <>

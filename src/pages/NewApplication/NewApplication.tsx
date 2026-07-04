@@ -44,6 +44,11 @@ export function NewApplication() {
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
+  // On-the-fly org creation extras from the AgentBranchPicker (contact capture).
+  const [org, setOrg] = useState({
+    agencyNew: false, branchNew: false,
+    agencyContactEmail: '', agencyContactName: '', agencyContactPhone: '', branchContactEmail: '',
+  });
 
   // address lookup
   const lookupAvailable = addressLookupAvailable();
@@ -54,7 +59,10 @@ export function NewApplication() {
   const [lookupMsg, setLookupMsg] = useState('');
 
   const errors = validateReferral(values);
-  const isValid = Object.keys(errors).length === 0;
+  // A newly-created agency must capture a contact email (its default contact).
+  const agencyEmailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(org.agencyContactEmail);
+  const orgContactError = org.agencyNew && !agencyEmailOk;
+  const isValid = Object.keys(errors).length === 0 && !orgContactError;
   const set = (k: keyof ReferralValues, v: string) => setValues((prev) => ({ ...prev, [k]: v }));
   const markTouched = (k: string) => setTouched((t) => new Set(t).add(k));
   const err = (k: keyof ReferralValues) => ((submitted || touched.has(k)) ? errors[k] : undefined);
@@ -100,6 +108,9 @@ export function NewApplication() {
         county: values.county.trim(), postcode: values.postcode.trim(),
         rent: Number(values.rent), tenancyStart: values.tenancyStart.trim(),
         agency: values.agency, branch: values.branch,
+        agencyNew: org.agencyNew, branchNew: org.branchNew,
+        agencyContactEmail: org.agencyContactEmail, agencyContactName: org.agencyContactName,
+        agencyContactPhone: org.agencyContactPhone, branchContactEmail: org.branchContactEmail,
       });
       await refresh();
       toast(res.emailSent
@@ -237,7 +248,11 @@ export function NewApplication() {
           <section className="card sec" id="sec-branch">
             <div className="sec__head"><span className="sec__num">4</span><div><div className="sec__title">Agent &amp; branch <Req /></div><div className="sec__sub">Select the agent this referral belongs to, then the branch. You can add a new agent or branch on the fly.</div></div></div>
             <CardBody>
-              <AgentBranchPicker onChange={(v) => setValues((prev) => ({ ...prev, agency: v.agency, branch: v.branch }))} />
+              <AgentBranchPicker onChange={(v) => {
+                setValues((prev) => ({ ...prev, agency: v.agency, branch: v.branch }));
+                setOrg({ agencyNew: v.agencyNew, branchNew: v.branchNew, agencyContactEmail: v.agencyContactEmail, agencyContactName: v.agencyContactName, agencyContactPhone: v.agencyContactPhone, branchContactEmail: v.branchContactEmail });
+              }} />
+              {submitted && orgContactError && <p className="na-form-error" style={{ marginTop: 8 }}>Enter a contact email for the new agency.</p>}
               {submitted && (errors.agency || errors.branch) && (
                 <span className="field-error" style={{ marginTop: 10 }}>Select an agent and a branch.</span>
               )}

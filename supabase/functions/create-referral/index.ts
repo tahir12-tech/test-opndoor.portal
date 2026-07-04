@@ -54,10 +54,26 @@ Deno.serve(async (req) => {
     const { data: branch, error: brErr } = await userClient
       .from("branches").select("id, agencies!inner(name)").eq("name", b.branch).eq("agencies.name", b.agency).limit(1).maybeSingle();
     if (brErr) return json({ ok: false, error: brErr.message }, 400);
-    if (!branch) return json({ ok: false, error: `Could not find the "${b.branch}" branch of ${b.agency}. Add it first, then refer.` }, 400);
+
+    // Resolve the target branch; if it does not exist yet, create the agency/branch
+    // on the fly (pending_review) and capture the agency-default contact. The RPC
+    // is scoped to the caller's partner and is idempotent (case-insensitive match).
+    let branchId = branch?.id as string | undefined;
+    if (!branchId) {
+      const { data: targetId, error: tErr } = await userClient.rpc("create_referral_target", {
+        p_agency: b.agency,
+        p_branch: b.branch,
+        p_agency_email: b.agencyContactEmail ?? null,
+        p_agency_contact_name: b.agencyContactName ?? null,
+        p_agency_phone: b.agencyContactPhone ?? null,
+        p_branch_email: b.branchContactEmail ?? null,
+      });
+      if (tErr) return json({ ok: false, error: tErr.message }, 400);
+      branchId = targetId as string;
+    }
 
     const { data: appRes, error: rpcErr } = await userClient.rpc("create_referral", {
-      p_branch: branch.id, p_tenant_title: b.title, p_first: b.firstName, p_last: b.lastName, p_dob: b.dob,
+      p_branch: branchId, p_tenant_title: b.title, p_first: b.firstName, p_last: b.lastName, p_dob: b.dob,
       p_email: b.email, p_phone: b.phone, p_addr1: b.addr1, p_addr2: b.addr2 ?? null, p_city: b.city,
       p_county: b.county ?? null, p_postcode: b.postcode, p_rent: b.rent, p_tenancy_start: b.tenancyStart,
     });
