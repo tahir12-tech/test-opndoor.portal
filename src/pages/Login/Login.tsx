@@ -16,6 +16,7 @@ import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { useSession } from '@/session/SessionContext';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import '../auth/auth.css';
 import './Login.css';
@@ -198,7 +199,7 @@ export function Login() {
                 </div>
                 <div className="field">
                   <label htmlFor="pass">Password</label>
-                  <input id="pass" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <PasswordInput id="pass" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <div className="auth__row auth__row--end">
                   {/* Carry the typed email over so the reset form is prefilled (#60). */}

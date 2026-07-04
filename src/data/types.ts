@@ -36,7 +36,13 @@ export interface Partner {
   /** Per-partner commission rates (fractions of one month's rent). Never hard-coded. */
   partnerRate: number;
   agentRate: number;
+  /** #79 What a referrer sees on the League Referrers tab for this partner.
+      full = peers ranked with fees + counts; rankings = counts only; private =
+      own performance only. Commission is never shown to referrers. Default full. */
+  referrerLeaderboard?: LeaderboardMode;
 }
+
+export type LeaderboardMode = 'full' | 'rankings' | 'private';
 
 export interface CommissionRates {
   partner: number;

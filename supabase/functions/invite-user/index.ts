@@ -23,8 +23,6 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const ROLE_LABEL: Record<string, string> = { superadmin: "an opndoor admin", management: "a manager", referrer: "a referrer" };
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -114,8 +112,11 @@ Deno.serve(async (req) => {
     const partnerName = inviteePartnerId
       ? (await service.from("partners").select("name").eq("id", inviteePartnerId).maybeSingle()).data?.name ?? ""
       : "";
-    const orgLine = role === "superadmin" ? "" : partnerName ? ` at ${partnerName}` : "";
-    const tpl = inviteEmailTemplate({ link, intendedFor: email, roleLabel: ROLE_LABEL[role] ?? "a team member", orgLine });
+    // #69: never expose a contact email as a display name. A name-less user's
+    // full_name falls back to their email (see fullName above), so if such a user
+    // is the inviter, drop it and let the template say "Your team".
+    const inviterName = caller.full_name && !caller.full_name.includes("@") ? caller.full_name : "";
+    const tpl = inviteEmailTemplate({ link, intendedFor: email, firstName, inviterName, partnerName });
     const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html });
 
     // Audit the invite (best-effort).

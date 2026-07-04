@@ -40,21 +40,21 @@ const LILAC = "#f8eff9";
 
 function layout(title: string, inner: string, intendedFor?: string): string {
   const testBanner = intendedFor
-    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
+    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
     : "";
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
         <tr><td style="background:${VALHALLA};padding:22px 28px;">
-          <span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:-0.02em;color:#ffffff;">opndoor</span>
-          <span style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
+          <span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#ffffff;">opndoor</span>
+          <span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
         </td></tr>
         ${testBanner}
-        <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">
+        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">
           ${inner}
         </td></tr>
-        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">
           opndoor. Questions? Reply to this email or contact ${REPLY_TO}.
         </td></tr>
       </table>
@@ -87,9 +87,9 @@ export function expiryReminderTemplate(p: ExpiryReminderInput): { subject: strin
     <p style="margin:0 0 14px;">A guarantee you referred is approaching expiry.</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0;border:1px solid rgba(39,29,95,0.12);border-radius:12px;">
       <tr><td style="padding:16px 18px;">
-        <div style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Deed of Guarantee ${p.guaranteeRef}</div>
-        <div style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:6px;text-transform:capitalize;">${phrase}</div>
-        <div style="font:400 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:6px;">Expiry date ${p.expiryDmy}${p.prop ? ` · ${p.prop}` : ""}${where ? ` · ${where}` : ""}</div>
+        <div style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Deed of Guarantee ${p.guaranteeRef}</div>
+        <div style="font:800 22px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:6px;text-transform:capitalize;">${phrase}</div>
+        <div style="font:400 13px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:6px;">Expiry date ${p.expiryDmy}${p.prop ? ` · ${p.prop}` : ""}${where ? ` · ${where}` : ""}</div>
       </td></tr>
     </table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">If the tenancy is continuing, arrange a renewal or send a fresh referral so cover stays in place. The guarantee period is 12 months from the tenancy start date.</p>`;

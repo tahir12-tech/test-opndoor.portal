@@ -9,7 +9,7 @@
    GET/POST/PATCH /partners. getSelected/setSelected stay client-side
    (a UI preference). scopeFor mirrors the server's partner-isolation rule.
    ===================================================================== */
-import type { CommissionRates, Partner, PartnerScope, PartnerStatus, Role } from './types';
+import type { CommissionRates, LeaderboardMode, Partner, PartnerScope, PartnerStatus, Role } from './types';
 import { ALL_PARTNERS } from './types';
 import { KEYS, clone, loadJSON, loadString, saveJSON, saveString } from './storage';
 import { DEFAULT_AGENT_RATE, DEFAULT_PARTNER_RATE, HOME_PARTNER, PARTNERS_SEED } from './mock/partners';
@@ -162,6 +162,32 @@ export async function updatePartnerSettings(id: string, next: PartnerSettingsInp
     name: next.name, status: next.status, since: next.since,
     partnerRate: next.partnerRate, agentRate: next.agentRate,
   });
+}
+
+/** #79 The referrer-leaderboard visibility mode for a partner (default full). */
+export function getReferrerLeaderboardMode(id: string): LeaderboardMode {
+  return getPartner(id)?.referrerLeaderboard ?? 'full';
+}
+
+/** #79 Set a partner's referrer-leaderboard mode. Live mode calls the governed
+    RPC (AAL2 + opndoor admin or that partner's own Management); mock records the
+    audit diff and updates the working copy. */
+export async function setReferrerLeaderboardMode(id: string, mode: LeaderboardMode): Promise<void> {
+  const cur = getPartner(id);
+  if (!cur) throw new Error('Partner not found.');
+  if (SUPABASE_ENABLED) {
+    const { error } = await sb().rpc('set_referrer_leaderboard_mode', { p_slug: id, p_mode: mode });
+    if (error) throw new Error(error.message);
+    return; // caller re-hydrates to pick up the new mode
+  }
+  const prev = cur.referrerLeaderboard ?? 'full';
+  if (prev !== mode) {
+    PARTNER_AUDIT[id] = [
+      { field: 'referrer_leaderboard', oldValue: prev, newValue: mode, actor: 'You', at: new Date() },
+      ...(PARTNER_AUDIT[id] ?? []),
+    ];
+  }
+  updatePartner(id, { referrerLeaderboard: mode });
 }
 
 /** Recent partner-change audit entries (most recent first). Admin-scoped. */

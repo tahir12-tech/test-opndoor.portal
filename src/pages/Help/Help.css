@@ -606,6 +606,31 @@
   margin: auto;
   display: block;
 }
+/* #75 Empty-resource placeholder: shown instead of an iframe when a resource has
+   no uploaded file, so the app is never embedded in the viewer. */
+.viewer__empty {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--ink-mute);
+}
+.viewer__empty svg {
+  width: 44px;
+  height: 44px;
+  color: var(--ink-mute);
+  opacity: 0.7;
+}
+.viewer__empty p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  max-width: 320px;
+}
 @media (max-width: 560px) {
   .viewer {
     width: 100vw;

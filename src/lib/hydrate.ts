@@ -81,7 +81,7 @@ function toContact(c: any): AgentContact {
 export async function hydrateFromSupabase(userId: string): Promise<void> {
   const client = sb();
   const [partnersRes, usersRes, agenciesRes, branchesRes, contactsRes, appsRes] = await Promise.all([
-    client.from('partners').select('id, slug, name, status, live_from, partner_rate, agent_rate, is_primary'),
+    client.from('partners').select('id, slug, name, status, live_from, partner_rate, agent_rate, is_primary, referrer_leaderboard_mode'),
     // Admin user list via RPC: TRUTHFUL last-active (auth.users.last_sign_in_at)
     // and status/role, visibility-scoped like the users_select RLS policy.
     client.rpc('list_managed_users'),
@@ -160,6 +160,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     apps: appsByPartner[p.slug] || 0,
     partnerRate: num(p.partner_rate),
     agentRate: num(p.agent_rate),
+    referrerLeaderboard: (p.referrer_leaderboard_mode ?? 'full') as Partner['referrerLeaderboard'],
   }));
 
   /* ---- org (agencies -> branches -> contacts + derived metrics) ---- */

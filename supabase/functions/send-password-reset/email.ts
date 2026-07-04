@@ -44,21 +44,21 @@ const LILAC = "#f8eff9";
 
 function layout(title: string, inner: string, intendedFor?: string): string {
   const testBanner = intendedFor
-    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
+    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
     : "";
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
         <tr><td style="background:${VALHALLA};padding:22px 28px;">
-          <span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:-0.02em;color:#ffffff;">opndoor</span>
-          <span style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
+          <span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#ffffff;">opndoor</span>
+          <span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
         </td></tr>
         ${testBanner}
-        <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">
+        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">
           ${inner}
         </td></tr>
-        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">
           opndoor. Questions? Reply to this email or contact ${REPLY_TO}.
         </td></tr>
       </table>
@@ -72,7 +72,7 @@ export function passwordResetTemplate(p: { link: string; intendedFor: string }):
     <p style="margin:0 0 14px;">Hello,</p>
     <p style="margin:0 0 14px;">We received a request to reset the password for your opndoor Guarantee Referral Portal account. Click the button below to choose a new password. For your security this link expires in 60 minutes and can be used once.</p>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;"><tr><td>
-      <a href="${p.link}" style="display:inline-block;background:${HELIOTROPE};background-image:linear-gradient(135deg,${HELIOTROPE},${HELIOTROPE_DEEP});color:#ffffff;text-decoration:none;font:700 15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:13px 26px;border-radius:10px;">Set a new password</a>
+      <a href="${p.link}" style="display:inline-block;background:${HELIOTROPE};color:#ffffff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Set a new password</a>
     </td></tr></table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">Two-factor authentication still applies. After setting a new password you will verify with your authenticator code as usual.</p>
     <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If you did not request this, you can safely ignore this email and your password will stay the same. If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.link}</span></p>`;

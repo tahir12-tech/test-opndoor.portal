@@ -169,3 +169,50 @@
   font-weight: 700;
   vertical-align: middle;
 }
+
+/* #79 Referrer-leaderboard visibility control (management / opndoor admin). */
+.lt-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  background: var(--white-lilac);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.lt-setting__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.lt-setting__main label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.lt-setting__main select {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  font-family: var(--body);
+  font-size: 13.5px;
+  color: var(--ink);
+  background: #fff;
+}
+.lt-setting__main select:disabled { background: var(--app-bg); color: var(--ink-mute); cursor: not-allowed; }
+.lt-setting__hint { font-size: 12px; color: var(--ink-soft); }
+
+/* #79 Referrer own-performance panel (Private mode). */
+.rl-own { padding: 28px 24px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-end; }
+.rl-own__stat { display: flex; flex-direction: column; gap: 4px; }
+.rl-own__n { font-family: var(--display); font-size: 34px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
+.rl-own__l { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); }
+.rl-note { flex: 1 1 100%; margin: 4px 0 0; font-size: 13px; color: var(--ink-soft); }
+
+/* #79 Highlight the signed-in referrer's own row. */
+.dt tr.is-self { background: var(--white-lilac); }
+.dt tr.is-self td { font-weight: 700; }

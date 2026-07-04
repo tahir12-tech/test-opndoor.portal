@@ -8,14 +8,16 @@
    The page sorts, searches and pages client-side today; a real back end
    could accept sort/search/page params and paginate server-side.
    ===================================================================== */
-import type { LeagueRow, LeagueView, PartnerScope, Period, Role } from './types';
+import type { LeaderboardMode, LeagueRow, LeagueView, PartnerScope, Period, Role } from './types';
 import { ALL_PARTNERS } from './types';
 import { liveAvailable, liveLeague } from './liveAnalytics';
+import { periodRange } from './paymentMetrics';
 import { getAgencies } from './orgService';
-import { getRatesFor, homePartner, partnerName } from './partnersService';
+import { getRatesFor, getReferrerLeaderboardMode, homePartner, partnerName } from './partnersService';
 import { AVG_RENT, LEAGUE_REFERRER_NAMES, convFor } from './mock/analyticsModel';
 import type { Agency, Branch } from './types';
 import { HOME_PARTNER } from './mock/partners';
+import { sb } from '@/lib/supabase';
 
 export interface LeagueOpts {
   role: Role;
@@ -86,4 +88,51 @@ export function getLeague(view: LeagueView, opts: LeagueOpts): LeagueRow[] {
     r.agentComm = r.fees * rates.agent;
   });
   return rows;
+}
+
+// ---- #79 Referrer leaderboard (referrers only) ----
+export interface ReferrerLeagueRow {
+  name: string;
+  refs: number;
+  /** Fees collected. Only populated in 'full' mode; 0 otherwise. Never commission. */
+  fees: number;
+  /** True for the signed-in referrer's own row. */
+  self: boolean;
+}
+export interface ReferrerBoard {
+  mode: LeaderboardMode;
+  rows: ReferrerLeagueRow[];
+}
+
+/**
+ * The referrer's own-partner leaderboard: positions and referral counts, plus
+ * fees collected only in 'full' mode. Commission is never included. A referrer's
+ * RLS scope hides sibling referrers, so live mode reads the SECURITY DEFINER
+ * referrer_league RPC (which also enforces the mode server-side). Mock mode
+ * synthesises the partner's referrers with the signed-in user (Priya Nair) as
+ * self, honouring the same mode.
+ */
+export async function getReferrerLeague(period: Period): Promise<ReferrerBoard> {
+  const mode = getReferrerLeaderboardMode(homePartner());
+  if (liveAvailable()) {
+    const [start, end] = periodRange(period);
+    const { data, error } = await sb().rpc('referrer_league', { p_start: start.toISOString(), p_end: end.toISOString() });
+    if (error) throw new Error(error.message);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: ReferrerLeagueRow[] = (data ?? []).map((r: any) => ({
+      name: r.name ?? '(unknown)', refs: Number(r.refs) || 0, fees: Number(r.fees) || 0, self: !!r.is_self,
+    }));
+    return { mode, rows };
+  }
+  // Mock: the signed-in referrer is the first name (Priya Nair).
+  const SELF = LEAGUE_REFERRER_NAMES[0];
+  const all: ReferrerLeagueRow[] = LEAGUE_REFERRER_NAMES
+    .map((nm, i) => {
+      const refs = Math.max(3, Math.round(40 - i * 1.6));
+      return { name: nm, refs, fees: Math.round(refs * 0.8 * AVG_RENT), self: nm === SELF };
+    })
+    .sort((a, b) => b.refs - a.refs);
+  if (mode === 'private') return { mode, rows: all.filter((r) => r.self) };
+  if (mode === 'rankings') return { mode, rows: all.map((r) => ({ ...r, fees: 0 })) };
+  return { mode, rows: all };
 }

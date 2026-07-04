@@ -1,15 +1,25 @@
 /* =====================================================================
    League tables — the full ranked lists behind the dashboard breakdowns.
-   Tabs for Agencies, Branches and Referrers; sortable by any column,
-   searchable, and paged at 15 rows. Respects role + partner scoping, with
-   a partner filter for opndoor admin. Deep-linked via ?view=.
 
-   Data comes from getLeague (the service). Sorting, searching and paging
-   are presentation concerns handled here.
+   Management / opndoor admin: tabs for Agencies, Branches and Referrers;
+   sortable, searchable, paged, with a partner filter for opndoor admin.
+
+   Referrers (#79): a single own-partner Referrers board (no Agencies/Branches
+   tabs, no export), showing positions and referral counts. Fees collected are
+   shown only when their partner's setting is "Full"; commission is never shown.
+   The per-partner setting (Full / Rankings only / Private) is editable here by
+   that partner's Management and by opndoor admin.
+
+   Data comes from getLeague / getReferrerLeague (the service). Sorting,
+   searching and paging are presentation concerns handled here.
    ===================================================================== */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ALL_PARTNERS, buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, getPeriods, type LeagueRow, type LeagueView } from '@/data';
+import {
+  ALL_PARTNERS, buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, getPeriods,
+  getReferrerLeague, getReferrerLeaderboardMode, setReferrerLeaderboardMode,
+  type LeaderboardMode, type LeagueRow, type LeagueView, type ReferrerBoard,
+} from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +28,7 @@ import { Card, CardFoot } from '@/components/ui/Card';
 import { Eyebrow } from '@/components/ui/Eyebrow';
 import { RoleOnly } from '@/components/ui/RoleOnly';
 import { PartnerSelect, PeriodSelect } from '@/components/ui/Select';
+import { useToast } from '@/components/ui/Toast';
 import './League.css';
 
 const PAGE = 15;
@@ -35,6 +46,12 @@ const TABS: { id: LeagueView; label: string }[] = [
   { id: 'branch', label: 'Branches' },
   { id: 'referrer', label: 'Referrers' },
 ];
+
+const MODE_LABEL: Record<LeaderboardMode, string> = {
+  full: 'Full (rankings and fees)',
+  rankings: 'Rankings only (no fees)',
+  private: 'Private (own performance only)',
+};
 
 function ConvChip({ cv }: { cv: number }) {
   const cls = cv >= 0.7 ? '' : cv >= 0.6 ? 'mid' : 'low';
@@ -61,8 +78,100 @@ function cellFor(col: SortKey, r: LeagueRow) {
 }
 
 export function League() {
+  const { role } = useSession();
+  // Referrers get a restricted own-partner board; everyone else the full tables.
+  return role === 'referrer' ? <ReferrerLeagueView /> : <FullLeagueView />;
+}
+
+// ---- Referrer view (#79): own-partner board, positions + counts (+ fees when Full). ----
+function ReferrerLeagueView() {
+  usePageMeta('league', 'League table', ['Home', 'League table']);
+  const { period, setPeriod } = useSession();
+  const [board, setBoard] = useState<ReferrerBoard | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    getReferrerLeague(period)
+      .then((b) => { if (alive) { setBoard(b); setLoading(false); } })
+      .catch(() => { if (alive) { setBoard({ mode: 'full', rows: [] }); setLoading(false); } });
+    return () => { alive = false; };
+  }, [period]);
+
+  const mode = board?.mode ?? 'full';
+  const rows = board?.rows ?? [];
+  const showFees = mode === 'full' || mode === 'private';
+  const own = rows.find((r) => r.self) ?? rows[0];
+
+  return (
+    <>
+      <div className="backbar" style={{ marginBottom: 16 }}>
+        <Button variant="quiet" size="sm" to="/dashboard"><Icon name="arrowLeft" /> Back to dashboard</Button>
+      </div>
+
+      <div className="page-head">
+        <div>
+          <Eyebrow>Performance · {period.label}</Eyebrow>
+          <h1 className="page-head__title" style={{ marginTop: 10 }}>Referrer leaderboard</h1>
+          <p className="page-head__sub">
+            {mode === 'private'
+              ? 'Your own referral performance for the selected period.'
+              : 'How you rank among referrers at your partner, by referrals sent in the selected period.'}
+          </p>
+        </div>
+        <div className="page-head__actions">
+          <PeriodSelect ariaLabel="League time period" value={period.id} onChange={setPeriod} options={getPeriods().map((p) => ({ value: p.id, label: p.label }))} />
+        </div>
+      </div>
+
+      <Card>
+        {loading ? (
+          <div className="lt-empty is-shown">Loading…</div>
+        ) : mode === 'private' ? (
+          <div className="rl-own">
+            <div className="rl-own__stat"><span className="rl-own__n">{(own?.refs ?? 0).toLocaleString('en-GB')}</span><span className="rl-own__l">Referrals sent</span></div>
+            {showFees && <div className="rl-own__stat"><span className="rl-own__n">{fmtBig(own?.fees ?? 0)}</span><span className="rl-own__l">Fees collected</span></div>}
+            <p className="rl-note">Your partner keeps the referrer leaderboard private, so only your own performance is shown.</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="dt">
+              <thead>
+                <tr>
+                  <th className="num" style={{ width: 44 }}>#</th>
+                  <th>Referrer</th>
+                  <th className="num">Referrals</th>
+                  {showFees && <th className="num">Fees collected</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={`${r.name}-${i}`} className={r.self ? 'is-self' : ''}>
+                    <td className="num"><span className={`rank${i < 3 ? ' top' : ''}`}>{i + 1}</span></td>
+                    <td><div className="lt-name">{r.name}{r.self && <span className="lt-partner">You</span>}</div></td>
+                    <td className="num">{r.refs.toLocaleString('en-GB')}</td>
+                    {showFees && <td className="num">{fmtBig(r.fees)}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!rows.length && <div className="lt-empty is-shown">No referrals in this period yet.</div>}
+          </div>
+        )}
+        {!loading && mode === 'rankings' && rows.length > 0 && (
+          <CardFoot><span className="pager__info">Fees are hidden on this leaderboard.</span></CardFoot>
+        )}
+      </Card>
+    </>
+  );
+}
+
+// ---- Full view (management / opndoor admin): unchanged tables + the #79 setting. ----
+function FullLeagueView() {
   usePageMeta('league', 'League tables', ['Home', 'League tables']);
-  const { role, partnerScope, period, setPeriod } = useSession();
+  const { role, partnerScope, period, setPeriod, refresh } = useSession();
+  const toast = useToast();
   const [params] = useSearchParams();
 
   const initialView = (params.get('view') as LeagueView) || 'agency';
@@ -72,6 +181,29 @@ export function League() {
   const [dir, setDir] = useState<-1 | 1>(-1);
   const [page, setPage] = useState(0);
   const [partner, setPartner] = useState('');
+
+  // #79 The partner whose referrer-leaderboard setting this control edits: the
+  // admin's in-page filter, or Management's own (home) partner.
+  const settingPartnerId = role === 'superadmin' ? partner : (partnerScope !== ALL_PARTNERS ? partnerScope : '');
+  const [mode, setMode] = useState<LeaderboardMode>('full');
+  useEffect(() => {
+    setMode(settingPartnerId ? getReferrerLeaderboardMode(settingPartnerId) : 'full');
+  }, [settingPartnerId]);
+  const partnerLabel = settingPartnerId ? (getPartners().find((p) => p.id === settingPartnerId)?.name ?? 'this partner') : '';
+
+  async function changeMode(next: LeaderboardMode) {
+    if (!settingPartnerId) return;
+    const prev = mode;
+    setMode(next);
+    try {
+      await setReferrerLeaderboardMode(settingPartnerId, next);
+      await refresh();
+      toast('Referrer leaderboard visibility updated.');
+    } catch (e) {
+      setMode(prev);
+      toast(e instanceof Error ? e.message : 'Could not update the setting.');
+    }
+  }
 
   const cols = COLS[view];
   // Show the partner tag only when genuinely viewing across partners (#52).
@@ -139,6 +271,23 @@ export function League() {
           ))}
         </div>
       </div>
+
+      {/* #79 Referrer-leaderboard visibility for this partner (admin/management). */}
+      {(role === 'superadmin' || role === 'management') && (
+        <div className="lt-setting">
+          <div className="lt-setting__main">
+            <label htmlFor="rl-mode">Referrer leaderboard visibility{partnerLabel ? ` · ${partnerLabel}` : ''}</label>
+            <select id="rl-mode" value={mode} disabled={!settingPartnerId} onChange={(e) => void changeMode(e.target.value as LeaderboardMode)}>
+              {(Object.keys(MODE_LABEL) as LeaderboardMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+            </select>
+          </div>
+          <span className="lt-setting__hint">
+            {settingPartnerId
+              ? 'What referrers at this partner see on their own leaderboard. Commission is never shown to referrers.'
+              : 'Select a single partner above to set what its referrers see.'}
+          </span>
+        </div>
+      )}
 
       <div className="lt-toolbar">
         <div className="lt-search">

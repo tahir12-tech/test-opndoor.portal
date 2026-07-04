@@ -23,6 +23,7 @@ import { SUPABASE_ENABLED, sb } from '@/lib/supabase';
 import { useSession } from '@/session/SessionContext';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import './auth.css';
 import '../ForgotPassword/ForgotPassword.css';
@@ -227,10 +228,10 @@ export function ResetPassword({ mode = 'reset' }: { mode?: 'reset' | 'invite' })
               <h2 className="auth__title">{c.title}</h2>
               <p className="auth__sub">Choose a strong password you do not use elsewhere.</p>
               <form className="auth__form" onSubmit={submitPassword} noValidate>
-                <div className="field"><label htmlFor="pw">{mode === 'invite' ? 'Password' : 'New password'}</label><input id="pw" type="password" autoComplete="new-password" placeholder="At least 8 characters" value={pw} onChange={(e) => setPw(e.target.value)} required /></div>
-                <div className="field"><label htmlFor="pw2">Confirm password</label><input id="pw2" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required /></div>
+                <div className="field"><label htmlFor="pw">{mode === 'invite' ? 'Password' : 'New password'}</label><PasswordInput id="pw" autoComplete="new-password" placeholder="At least 8 characters" value={pw} onChange={(e) => setPw(e.target.value)} required /></div>
+                <div className="field"><label htmlFor="pw2">Confirm password</label><PasswordInput id="pw2" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required /></div>
                 {error && <p className="auth__error" role="alert" style={{ color: 'var(--danger, #c0392b)' }}>{error}</p>}
-                <Button variant="primary" block type="submit" arrow disabled={busy || !pw || !pw2}>{busy ? 'Saving…' : (mode === 'invite' ? 'Continue to two-factor' : 'Save new password')}</Button>
+                <Button variant="primary" block type="submit" arrow disabled={busy || !pw || !pw2}>{busy ? 'Saving…' : (mode === 'invite' ? 'Set password' : 'Save new password')}</Button>
               </form>
               <p className="auth__foot"><Link to="/login">Back to sign in</Link></p>
             </div>

@@ -46,21 +46,21 @@ const LILAC = "#f8eff9";
 
 function layout(title: string, inner: string, intendedFor?: string): string {
   const testBanner = intendedFor
-    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
+    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
     : "";
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
         <tr><td style="background:${VALHALLA};padding:22px 28px;">
-          <span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:-0.02em;color:#ffffff;">opndoor</span>
-          <span style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
+          <span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#ffffff;">opndoor</span>
+          <span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
         </td></tr>
         ${testBanner}
-        <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">
+        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">
           ${inner}
         </td></tr>
-        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">
           opndoor. Questions? Reply to this email or contact ${REPLY_TO}.
         </td></tr>
       </table>
@@ -83,13 +83,13 @@ export function paymentEmailTemplate(p: {
     <p style="margin:0 0 14px;">You've been referred to opndoor's professional guarantor service to support your tenancy at ${p.propertyAddr}. To put your Deed of Guarantee in place, please pay the one-off guarantor fee below.</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;border:1px solid rgba(39,29,95,0.12);border-radius:12px;">
       <tr><td style="padding:16px 18px;">
-        <div style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Guarantor fee</div>
-        <div style="font:800 30px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:4px;">${p.amount}</div>
-        <div style="font:400 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:2px;">One month's rent. Reference ${p.guaranteeRef}.</div>
+        <div style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Guarantor fee</div>
+        <div style="font:800 30px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:4px;">${p.amount}</div>
+        <div style="font:400 13px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:2px;">One month's rent. Reference ${p.guaranteeRef}.</div>
       </td></tr>
     </table>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;"><tr><td>
-      <a href="${p.payUrl}" style="display:inline-block;background:${HELIOTROPE};background-image:linear-gradient(135deg,${HELIOTROPE},${HELIOTROPE_DEEP});color:#ffffff;text-decoration:none;font:700 15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:13px 26px;border-radius:10px;">Pay the guarantor fee</a>
+      <a href="${p.payUrl}" style="display:inline-block;background:${HELIOTROPE};color:#ffffff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Pay the guarantor fee</a>
     </td></tr></table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">It's a one-off payment for opndoor to act as your professional guarantor, providing a Deed of Guarantee in favour of the property so your tenancy can proceed. Payment is secure and handled by Stripe.</p>
     <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.payUrl}</span></p>`;

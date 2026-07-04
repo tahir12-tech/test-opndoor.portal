@@ -49,7 +49,7 @@ export function NewApplication() {
   const [org, setOrg] = useState({
     agencyNew: false, branchNew: false,
     agencyContactEmail: '', agencyContactName: '', agencyContactPhone: '', branchContactEmail: '',
-    partner: '',
+    partner: '', singleOffice: null as boolean | null,
   });
 
   // address lookup
@@ -66,7 +66,9 @@ export function NewApplication() {
   const orgContactError = org.agencyNew && !agencyEmailOk;
   // An admin fly-creating an agency must choose the partner it lands under (#66).
   const orgPartnerError = org.agencyNew && role === 'superadmin' && !org.partner;
-  const isValid = Object.keys(errors).length === 0 && !orgContactError && !orgPartnerError;
+  // A new agency must answer the single-office question before submit (#74).
+  const orgOfficeError = org.agencyNew && org.singleOffice === null;
+  const isValid = Object.keys(errors).length === 0 && !orgContactError && !orgPartnerError && !orgOfficeError;
   const set = (k: keyof ReferralValues, v: string) => setValues((prev) => ({ ...prev, [k]: v }));
   const markTouched = (k: string) => setTouched((t) => new Set(t).add(k));
   const err = (k: keyof ReferralValues) => ((submitted || touched.has(k)) ? errors[k] : undefined);
@@ -259,11 +261,12 @@ export function NewApplication() {
             <CardBody>
               <AgentBranchPicker onChange={(v) => {
                 setValues((prev) => ({ ...prev, agency: v.agency, branch: v.branch }));
-                setOrg({ agencyNew: v.agencyNew, branchNew: v.branchNew, agencyContactEmail: v.agencyContactEmail, agencyContactName: v.agencyContactName, agencyContactPhone: v.agencyContactPhone, branchContactEmail: v.branchContactEmail, partner: v.partner });
+                setOrg({ agencyNew: v.agencyNew, branchNew: v.branchNew, agencyContactEmail: v.agencyContactEmail, agencyContactName: v.agencyContactName, agencyContactPhone: v.agencyContactPhone, branchContactEmail: v.branchContactEmail, partner: v.partner, singleOffice: v.singleOffice });
               }} />
               {submitted && orgPartnerError && <p className="na-form-error" style={{ marginTop: 8 }}>Select the partner this new agency belongs to.</p>}
+              {submitted && orgOfficeError && <p className="na-form-error" style={{ marginTop: 8 }}>Tell us whether this is a single-office agency.</p>}
               {submitted && orgContactError && <p className="na-form-error" style={{ marginTop: 8 }}>Enter a contact email for the new agency.</p>}
-              {submitted && (errors.agency || errors.branch) && (
+              {submitted && !orgOfficeError && (errors.agency || errors.branch) && (
                 <span className="field-error" style={{ marginTop: 10 }}>Select an agent and a branch.</span>
               )}
             </CardBody>

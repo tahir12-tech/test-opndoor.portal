@@ -7,8 +7,8 @@ import type { HelpContent } from '../types';
 
 export const HELP_SEED: HelpContent = {
   gettingStarted: [
-    { id: 'gs0', icon: 'doc', type: 'Guide', title: 'Portal user guide', desc: 'The complete guide to referring, tracking and earning through the portal. Opens the full document.', meta: 'Open guide', href: 'guide/Portal User Guide.html' },
-    { id: 'gs0b', icon: 'doc', type: 'Guide', title: 'Sales and conversation guide', desc: 'How to talk to the agent and the tenant, who qualifies, how claims work, and where the line is.', meta: 'Open guide', href: 'guide/Sales and Conversation Guide.html' },
+    { id: 'gs0', icon: 'doc', type: 'Guide', title: 'Portal user guide', desc: 'The complete guide to referring, tracking and earning through the portal. Opens the full document.', meta: '' },
+    { id: 'gs0b', icon: 'doc', type: 'Guide', title: 'Sales and conversation guide', desc: 'How to talk to the agent and the tenant, who qualifies, how claims work, and where the line is.', meta: '' },
     { id: 'gs1', icon: 'video', type: 'Video', title: 'Welcome to the portal', desc: 'A short tour of the dashboard, applications and how a referral moves from Sent to Deed Issued.', meta: '' },
     { id: 'gs2', icon: 'doc', type: 'Guide', title: 'Signing in with two-factor', desc: 'How to sign in with your work email and the 6-digit verification code at the second step.', meta: '' },
     { id: 'gs3', icon: 'doc', type: 'Guide', title: 'Sending a referral', desc: 'Completing the new application form: tenant, property, tenancy, and the agent and branch fields.', meta: '' },
@@ -17,9 +17,9 @@ export const HELP_SEED: HelpContent = {
     { id: 'gs6', icon: 'users', type: 'Guide', title: 'Roles and permissions', desc: 'What opndoor admins, management and referrers can each see and do across the portal.', meta: '' },
   ],
   templates: [
-    { id: 'tp0', icon: 'doc', type: 'Flyer', title: 'Agent one-pager (opndoor for letting agents)', desc: 'A branded one-page flyer to share with letting agents: turn failed references into completed lets, with the benefits and how it works.', meta: 'Open flyer', href: 'guide/opndoor for Letting Agents.html' },
+    { id: 'tp0', icon: 'doc', type: 'Flyer', title: 'Agent one-pager (opndoor for letting agents)', desc: 'A branded one-page flyer to share with letting agents: turn failed references into completed lets, with the benefits and how it works.', meta: '' },
     { id: 'tp1', icon: 'doc', type: 'Checklist', title: 'Referral information checklist', desc: 'The tenant, property and tenancy details to gather before you start an application.', meta: '' },
-    { id: 'tp2', icon: 'doc', type: 'Leaflet', title: 'Tenant explainer leaflet', desc: 'A one-page explainer to share with tenants: what the opndoor guarantor service is, the fee, and how it works.', meta: 'Open leaflet', href: 'guide/opndoor for Tenants.html' },
+    { id: 'tp2', icon: 'doc', type: 'Leaflet', title: 'Tenant explainer leaflet', desc: 'A one-page explainer to share with tenants: what the opndoor guarantor service is, the fee, and how it works.', meta: '' },
     { id: 'tp3', icon: 'image', type: 'Assets', title: 'Co-branding assets', desc: 'Logos and brand guidance for white-labelling the portal with your own branding.', meta: '' },
   ],
   faqs: [

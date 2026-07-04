@@ -48,6 +48,11 @@ export interface AgentBranchValue {
   /** The partner the referral belongs to: the chosen agency's own partner, or
       (admin fly-creation) the explicitly selected partner. '' when unresolved. */
   partner: string;
+  /** #74 For a NEW agency only: has the "single-office agency?" question been
+      answered? null = not yet (blocks submit); true = single office (auto Head
+      office branch); false = has branches (name one). Always null for an
+      existing agency, which is never asked. */
+  singleOffice: boolean | null;
 }
 
 export function AgentBranchPicker({ onChange }: { onChange?: (value: AgentBranchValue) => void }) {
@@ -62,6 +67,9 @@ export function AgentBranchPicker({ onChange }: { onChange?: (value: AgentBranch
   const [branchNew, setBranchNew] = useState(false);
   // The branch was auto-defaulted to Head office because the agency has none.
   const [branchAuto, setBranchAuto] = useState(false);
+  // #74 For a new agency: the answer to "Is this a single-office agency?".
+  // null until answered (no default), so submit is blocked until the user picks.
+  const [singleOffice, setSingleOffice] = useState<boolean | null>(null);
   const [agEmail, setAgEmail] = useState('');
   const [agName, setAgName] = useState('');
   const [agPhone, setAgPhone] = useState('');
@@ -93,9 +101,10 @@ export function AgentBranchPicker({ onChange }: { onChange?: (value: AgentBranch
       agencyContactPhone: agPhone.trim(),
       branchContactEmail: branchAuto ? '' : brEmail.trim(),
       partner: resolvedPartner,
+      singleOffice: agencyNew ? singleOffice : null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgency, selectedBranch, agencyNew, branchNew, agEmail, agName, agPhone, brEmail, branchAuto, resolvedPartner]);
+  }, [selectedAgency, selectedBranch, agencyNew, branchNew, agEmail, agName, agPhone, brEmail, branchAuto, resolvedPartner, singleOffice]);
 
   /** Auto-fill a "Head office" branch when the agency has no branches (#65). */
   function autoBranchIfSingleOffice(name: string) {
@@ -121,9 +130,33 @@ export function AgentBranchPicker({ onChange }: { onChange?: (value: AgentBranch
     setBranchNew(false);
     setBranchAuto(false);
     setBrEmail('');
+    setSingleOffice(null); // #74 a fresh choice is unanswered
     if (!isNew) { setAgEmail(''); setAgName(''); setAgPhone(''); }
     else if (isAdmin) setAdminPartner((p) => p || (partnerScope === ALL_PARTNERS ? '' : partnerScope));
-    autoBranchIfSingleOffice(name);
+    // #65 silent Head office default stays for EXISTING single-office agencies;
+    // a NEW agency is asked explicitly (#74) rather than defaulted.
+    if (!isNew) autoBranchIfSingleOffice(name);
+  }
+
+  /** #74 Answer the single-office question for a new agency. Yes auto-creates a
+      self-identifying "[Agency], Head office" branch (inheriting the agency
+      contact); No clears the branch so the user names one. */
+  function answerSingleOffice(yes: boolean) {
+    setSingleOffice(yes);
+    if (yes) {
+      const name = `${selectedAgency}, Head office`;
+      setBranchValue(name);
+      setSelectedBranch(name);
+      setBranchNew(true);
+      setBranchAuto(true);
+      setBrEmail('');
+    } else {
+      setBranchValue('');
+      setSelectedBranch(null);
+      setBranchNew(false);
+      setBranchAuto(false);
+      setBrEmail('');
+    }
   }
 
   function resetAgent(v: string) {
@@ -135,6 +168,7 @@ export function AgentBranchPicker({ onChange }: { onChange?: (value: AgentBranch
     setSelectedBranch(null);
     setBranchNew(false);
     setBranchAuto(false);
+    setSingleOffice(null);
     setAgEmail(''); setAgName(''); setAgPhone(''); setBrEmail('');
   }
 
@@ -246,24 +280,57 @@ export function AgentBranchPicker({ onChange }: { onChange?: (value: AgentBranch
           emptyText="No agencies found. Type a name to add one"
         />
       </div>
-      <div className="field span-2">
-        <label htmlFor="br-name">Branch</label>
-        <TypeAhead
-          id="br-name"
-          value={branchValue}
-          onChange={onBranchInput}
-          onEnter={commitBranchEnter}
-          options={branchOptions}
-          placeholder={selectedAgency ? 'Search branches or add a new one' : 'Select an agent first'}
-          disabled={!selectedAgency}
-          emptyText={branchEmpty}
-        />
-        {branchAuto ? (
-          <span className="hint">Single-office agent. A <b>Head office</b> branch will be used, inheriting the agency contact. Type a branch name to change it.</span>
-        ) : (
-          <span className="hint">Branches are filtered to the selected agent. Add a new branch on the fly if it is not listed.</span>
-        )}
-      </div>
+      {/* #74 New agency: ask explicitly (no default) whether it is single-office. */}
+      {agencyNew && (
+        <div className="field span-2">
+          <label>Is this a single-office agency? <span className="req" aria-hidden="true">*</span></label>
+          <div className="radio-row" role="radiogroup" aria-label="Is this a single-office agency?">
+            <label className="radio-opt">
+              <input type="radio" name="single-office" checked={singleOffice === true} onChange={() => answerSingleOffice(true)} />
+              <span>Yes, a single office</span>
+            </label>
+            <label className="radio-opt">
+              <input type="radio" name="single-office" checked={singleOffice === false} onChange={() => answerSingleOffice(false)} />
+              <span>No, it has branches</span>
+            </label>
+          </div>
+          <span className="hint">
+            {singleOffice === true
+              ? <>A branch named <b>{selectedAgency}, Head office</b> will be created automatically, inheriting the agency contact.</>
+              : 'A single-office agency gets one Head office branch automatically. Choose No to name a branch.'}
+          </span>
+        </div>
+      )}
+
+      {/* Branch field: existing agencies always; a new agency only once it is
+          confirmed to have branches. A new single-office agency uses the auto
+          Head office branch (read-only) and skips this field. */}
+      {agencyNew && singleOffice === true ? (
+        <div className="field span-2">
+          <label htmlFor="br-name">Branch</label>
+          <input id="br-name" type="text" readOnly value={`${selectedAgency}, Head office`} />
+          <span className="hint">Auto-created for this single-office agency. Answer No above to name a branch instead.</span>
+        </div>
+      ) : (!agencyNew || singleOffice === false) ? (
+        <div className="field span-2">
+          <label htmlFor="br-name">Branch</label>
+          <TypeAhead
+            id="br-name"
+            value={branchValue}
+            onChange={onBranchInput}
+            onEnter={commitBranchEnter}
+            options={branchOptions}
+            placeholder={selectedAgency ? 'Search branches or add a new one' : 'Select an agent first'}
+            disabled={!selectedAgency}
+            emptyText={branchEmpty}
+          />
+          {branchAuto ? (
+            <span className="hint">Single-office agent. A <b>Head office</b> branch will be used, inheriting the agency contact. Type a branch name to change it.</span>
+          ) : (
+            <span className="hint">Branches are filtered to the selected agent. Add a new branch on the fly if it is not listed.</span>
+          )}
+        </div>
+      ) : null}
 
       {agencyNew && (
         <div className="field span-2" style={{ background: 'var(--white-lilac)', border: '1px solid var(--line)', borderRadius: 'var(--r-md, 10px)', padding: 14 }}>

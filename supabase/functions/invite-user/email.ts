@@ -43,21 +43,21 @@ const LILAC = "#f8eff9";
 
 function layout(title: string, inner: string, intendedFor?: string): string {
   const testBanner = intendedFor
-    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
+    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
     : "";
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
         <tr><td style="background:${VALHALLA};padding:22px 28px;">
-          <span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:-0.02em;color:#ffffff;">opndoor</span>
-          <span style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
+          <span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#ffffff;">opndoor</span>
+          <span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
         </td></tr>
         ${testBanner}
-        <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">
+        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">
           ${inner}
         </td></tr>
-        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">
           opndoor. Questions? Reply to this email or contact ${REPLY_TO}.
         </td></tr>
       </table>
@@ -65,16 +65,25 @@ function layout(title: string, inner: string, intendedFor?: string): string {
   </table></body></html>`;
 }
 
-export function inviteEmailTemplate(p: { link: string; intendedFor: string; roleLabel: string; orgLine: string }): { subject: string; html: string } {
-  const subject = "You've been invited to the opndoor portal";
+export function inviteEmailTemplate(p: { link: string; intendedFor: string; firstName: string; inviterName: string; partnerName: string }): { subject: string; html: string } {
+  // Owner-approved copy, used verbatim. Merge fields: first name, inviter (or
+  // "Your team"), partner, and the accept link.
+  const subject = "You've been invited to the opndoor Guarantee Referral Portal";
+  const inviter = p.inviterName.trim() || "Your team";
+  const at = p.partnerName.trim() ? ` at ${p.partnerName.trim()}` : "";
+  const hello = p.firstName.trim() || "there";
   const inner = `
-    <p style="margin:0 0 14px;">Hello,</p>
-    <p style="margin:0 0 14px;">You've been invited to the opndoor Guarantee Referral Portal as <b>${p.roleLabel}</b>${p.orgLine}. The portal is where you refer failed-referencing tenants to opndoor's professional guarantor service and track each application through to deed issued.</p>
-    <p style="margin:0 0 16px;">Click below to accept your invitation and set your password.</p>
+    <p style="margin:0 0 14px;">Hello ${hello},</p>
+    <p style="margin:0 0 16px;">${inviter}${at} has invited you to the opndoor Guarantee Referral Portal, where you can refer tenants who've failed referencing to opndoor's professional guarantor service, and track every application from sent through to deed issued.</p>
+    <p style="margin:0 0 8px;">Getting set up takes two minutes:</p>
+    <ol style="margin:0 0 18px;padding-left:20px;color:${VALHALLA};">
+      <li style="margin:0 0 6px;">Accept the invitation and choose your password</li>
+      <li>Set up two-factor authentication with an authenticator app (Google Authenticator, 1Password, Authy)</li>
+    </ol>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 20px;"><tr><td>
-      <a href="${p.link}" style="display:inline-block;background:${HELIOTROPE};background-image:linear-gradient(135deg,${HELIOTROPE},${HELIOTROPE_DEEP});color:#ffffff;text-decoration:none;font:700 15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:13px 26px;border-radius:10px;">Accept invitation</a>
+      <a href="${p.link}" style="display:inline-block;background:${HELIOTROPE};color:#ffffff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Accept invitation</a>
     </td></tr></table>
-    <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">After setting your password you'll set up two-factor authentication with an authenticator app, then you're in. For your security this invitation expires in a few days.</p>
-    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If you weren't expecting this, you can ignore this email. If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.link}</span></p>`;
+    <p style="margin:16px 0 0;font-size:13px;color:${INK_SOFT};">For your security this invitation expires in a few days. If you weren't expecting it, you can safely ignore this email.</p>
+    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.link}</span></p>`;
   return { subject, html: layout(subject, inner, p.intendedFor) };
 }

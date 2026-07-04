@@ -243,22 +243,22 @@ async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindCo
   const dest = REVIEW || tenantEmail;
   const subject = `Your opndoor Deed of Guarantee is ready to sign, ${ctx.guarantee_ref}`;
   const banner = REVIEW
-    ? `<tr><td style="padding:10px 16px;background:#f8eff9;border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#5b4d86;">Test mode. Intended for ${tenantEmail} and redirected to you for review.</td></tr>`
+    ? `<tr><td style="padding:10px 16px;background:#f8eff9;border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">Test mode. This email was intended for ${tenantEmail} and redirected to you for review.</td></tr>`
     : "";
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;"><tr><td align="center">
-    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;">
-      <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#fff;">opndoor</span></td></tr>
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
+      <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#fff;">opndoor</span><span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span></td></tr>
       ${banner}
-      <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#271d5f;">
+      <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#271d5f;">
         <p style="margin:0 0 14px;">Dear ${ctx.tenant_first_name} ${ctx.tenant_last_name},</p>
         <p style="margin:0 0 18px;">Your opndoor Deed of Guarantee is ready to sign. Please review and sign the document to put your guarantee in place. Reference ${ctx.guarantee_ref}.</p>
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;"><tr><td>
-          <a href="${link}" style="display:inline-block;background:#d364fb;color:#fff;text-decoration:none;font:700 15px -apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:13px 26px;border-radius:10px;">Review and sign your deed</a>
+          <a href="${link}" style="display:inline-block;background:#d364fb;color:#fff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Review and sign your deed</a>
         </td></tr></table>
         <p style="margin:14px 0 0;font-size:12px;color:#5b4d86;">If the button does not work, copy this link into your browser:<br><span style="color:#b54de0;word-break:break-all;">${link}</span></p>
       </td></tr>
-      <tr><td style="padding:18px 28px;background:#f8eff9;font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#5b4d86;">opndoor. Questions? Reply to this email or contact ${REPLY_TO}.</td></tr>
+      <tr><td style="padding:18px 28px;background:#f8eff9;font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">opndoor. Questions? Reply to this email or contact ${REPLY_TO}.</td></tr>
     </table>
   </td></tr></table></body></html>`;
   try {

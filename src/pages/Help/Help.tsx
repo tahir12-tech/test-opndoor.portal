@@ -53,8 +53,23 @@ function fileToBlobUrl(file: NonNullable<HelpResource['file']>): string | null {
 function imageMime(m?: string): boolean {
   return /^image\//.test(m || '');
 }
+/** An href we can actually open here: an absolute web URL, or an inline data/blob
+    URL. A RELATIVE href (e.g. a ported "guide/*.html" whose asset is not shipped
+    with this app) would resolve against this SPA and, when the file is absent,
+    fall back to index.html, embedding the whole portal in the viewer (#75). We
+    never treat such an href as a real file, so an empty resource always shows the
+    placeholder instead of the app. */
+function servableHref(r: HelpResource): string | null {
+  const h = (r.href || '').trim();
+  return /^(https?:|data:|blob:)/i.test(h) ? h : null;
+}
+/** A resource is openable only when it has an uploaded file or a servable href. */
+function hasResourceFile(r: HelpResource): boolean {
+  return !!r.file?.url || !!servableHref(r);
+}
 function previewable(r: HelpResource): boolean {
-  if (r.href) return /\.(html?|pdf)$/i.test(r.href);
+  const h = servableHref(r);
+  if (h) return /\.(html?|pdf)(\?|#|$)/i.test(h) || /^data:(text\/html|application\/pdf)/i.test(h);
   const m = r.file?.mime || '';
   const n = r.file?.name || '';
   return imageMime(m) || m === 'application/pdf' || /\.pdf$/i.test(n) || m === 'text/html' || /\.html?$/i.test(n);
@@ -83,7 +98,7 @@ export function Help() {
   const q = query.trim().toLowerCase();
 
   // viewer
-  const [viewer, setViewer] = useState<{ open: boolean; title: string; src: string; isImg: boolean; blob: string | null; href?: string } | null>(null);
+  const [viewer, setViewer] = useState<{ open: boolean; title: string; src: string; isImg: boolean; blob: string | null; href?: string; empty?: boolean } | null>(null);
 
   // resource modal
   const [resDraft, setResDraft] = useState<ResourceDraftState | null>(null);
@@ -126,8 +141,9 @@ export function Help() {
   // ---- viewer ----
   function download(r: HelpResource) {
     const a = document.createElement('a');
-    if (r.href) {
-      a.href = r.href;
+    const h = servableHref(r);
+    if (h) {
+      a.href = h;
       a.target = '_blank';
       a.rel = 'noopener';
     } else if (r.file) {
@@ -145,20 +161,24 @@ export function Help() {
     document.body.removeChild(a);
   }
   function openResourceFile(r: HelpResource, forceDownload: boolean) {
-    if (!r.href && !r.file?.url) {
-      toast(isAdmin ? 'No file attached yet. Edit this resource to upload one.' : 'This resource is coming soon.');
+    const h = servableHref(r);
+    if (!h && !r.file?.url) {
+      // Empty resource (no upload, or only a non-servable relative href): open the
+      // viewer in placeholder mode. Never fall through to an iframe, so the app is
+      // never embedded (#75).
+      setViewer({ open: true, title: r.title || 'Resource', src: '', isImg: false, blob: null, empty: true });
       return;
     }
     if (forceDownload || !previewable(r)) {
       download(r);
       return;
     }
-    const src = r.href ? r.href : fileToBlobUrl(r.file!);
+    const src = h ? h : fileToBlobUrl(r.file!);
     if (!src) {
       toast('Could not open this file.');
       return;
     }
-    setViewer({ open: true, title: r.title || 'Resource', src, isImg: r.href ? false : imageMime(r.file?.mime), blob: r.href ? null : src, href: r.href });
+    setViewer({ open: true, title: r.title || 'Resource', src, isImg: h ? false : imageMime(r.file?.mime), blob: h ? null : src, href: h ?? undefined });
   }
   function closeViewer() {
     if (viewer?.blob) {
@@ -251,7 +271,7 @@ export function Help() {
 
   // ---- render helpers ----
   function ResourceCard({ r, section }: { r: HelpResource; section: HelpResourceSection }) {
-    const hasFile = !!r.file?.url || !!r.href;
+    const hasFile = hasResourceFile(r);
     const metaRight = hasFile ? r.meta : isAdmin ? 'No file yet · edit to upload' : 'Coming soon';
     const icClass = r.icon === 'video' ? ' res__ic--video' : r.icon === 'deed' ? ' res__ic--deed' : '';
     return (
@@ -262,7 +282,7 @@ export function Help() {
             <button className="mini mini--danger" title="Delete" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirm({ title: 'Delete resource?', body: <>Delete <b>{r.title || 'this resource'}</b>? It is removed for all users and cannot be undone.</>, run: () => { helpService.deleteResource(section, r.id); refresh(); toast('Resource deleted for all users.'); } }); }}><Icon name="trash" /></button>
           </div>
         )}
-        {hasFile && <span className="res__dl" title={r.href ? 'Open' : 'Download'}><Icon name={r.href ? 'external' : 'download'} /></span>}
+        {hasFile && <span className="res__dl" title={servableHref(r) ? 'Open' : 'Download'}><Icon name={servableHref(r) ? 'external' : 'download'} /></span>}
         <span className={`res__ic${icClass}`}><Icon name={RES_IC[r.icon] || 'file'} strokeWidth={1.8} /></span>
         <div>
           <div className="res__t">{r.title}</div>
@@ -529,12 +549,21 @@ export function Help() {
           <div className="viewer" role="dialog" aria-modal="true">
             <div className="viewer__head">
               <span className="viewer__title">{viewer.title}</span>
-              <a className="viewer__act" title="Open in new tab" href={viewer.src} target="_blank" rel="noopener"><Icon name="external" /></a>
-              <button className="viewer__act" title="Download" onClick={() => viewer.href ? window.open(viewer.href, '_blank', 'noopener') : undefined}><Icon name="download" /></button>
+              {!viewer.empty && <a className="viewer__act" title="Open in new tab" href={viewer.src} target="_blank" rel="noopener"><Icon name="external" /></a>}
+              {!viewer.empty && <button className="viewer__act" title="Download" onClick={() => window.open(viewer.href || viewer.src, '_blank', 'noopener')}><Icon name="download" /></button>}
               <button className="viewer__act" title="Close" onClick={closeViewer}><Icon name="x" /></button>
             </div>
             <div className="viewer__body">
-              {viewer.isImg ? <img src={viewer.src} alt={viewer.title} /> : <iframe src={viewer.src} title={viewer.title} />}
+              {viewer.empty ? (
+                <div className="viewer__empty">
+                  <Icon name="file" strokeWidth={1.4} />
+                  <p>{isAdmin ? 'No file uploaded yet, edit this resource to upload one' : 'No file uploaded yet.'}</p>
+                </div>
+              ) : viewer.isImg ? (
+                <img src={viewer.src} alt={viewer.title} />
+              ) : (
+                <iframe src={viewer.src} title={viewer.title} />
+              )}
             </div>
           </div>
         </div>

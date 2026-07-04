@@ -37,18 +37,18 @@ const INK_SOFT = "#5b4d86";
 const LILAC = "#f8eff9";
 
 function layout(inner: string, intendedFor: string): string {
-  const banner = `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`;
+  const banner = `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`;
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
         <tr><td style="background:${VALHALLA};padding:22px 28px;">
-          <span style="font:800 22px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:-0.02em;color:#ffffff;">opndoor</span>
-          <span style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
+          <span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#ffffff;">opndoor</span>
+          <span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
         </td></tr>
         ${banner}
-        <tr><td style="padding:28px;font:400 15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};">${inner}</td></tr>
-        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};">opndoor. Questions? Reply to this email or contact ${REPLY_TO}.</td></tr>
+        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">${inner}</td></tr>
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">opndoor. Questions? Reply to this email or contact ${REPLY_TO}.</td></tr>
       </table>
     </td></tr>
   </table></body></html>`;
@@ -61,9 +61,9 @@ function refundEmailTemplate(p: { title: string; lastName: string; propertyAddr:
     <p style="margin:0 0 14px;">Dear ${dear || "there"},</p>
     <p style="margin:0 0 16px;">Your guarantor fee for ${p.propertyAddr} has been refunded. The refund is on its way back to the card you paid with.</p>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid rgba(39,29,95,0.12);border-radius:12px;"><tr><td style="padding:16px 18px;">
-      <div style="font:600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Amount refunded</div>
-      <div style="font:800 30px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:4px;">${p.amount}</div>
-      <div style="font:400 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:2px;">Reference ${p.guaranteeRef}.</div>
+      <div style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Amount refunded</div>
+      <div style="font:800 30px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:4px;">${p.amount}</div>
+      <div style="font:400 13px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:2px;">Reference ${p.guaranteeRef}.</div>
     </td></tr></table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">Refunds usually take 5 to 10 working days to appear, depending on your bank. You do not need to do anything.</p>
     <p style="margin:12px 0 0;font-size:13px;color:${INK_SOFT};">If you have any questions about this refund, reply to this email or contact ${REPLY_TO}.</p>`;
