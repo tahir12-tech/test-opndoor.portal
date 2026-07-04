@@ -132,6 +132,8 @@ export async function getReferrerLeague(period: Period): Promise<ReferrerBoard> 
       return { name: nm, refs, fees: Math.round(refs * 0.8 * AVG_RENT), self: nm === SELF };
     })
     .sort((a, b) => b.refs - a.refs);
+  // #87 The viewing referrer's own row must always be present (even at zero).
+  if (!all.some((r) => r.self)) all.push({ name: SELF, refs: 0, fees: 0, self: true });
   if (mode === 'private') return { mode, rows: all.filter((r) => r.self) };
   if (mode === 'rankings') return { mode, rows: all.map((r) => ({ ...r, fees: 0 })) };
   return { mode, rows: all };

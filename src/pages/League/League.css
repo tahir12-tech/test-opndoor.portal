@@ -204,6 +204,7 @@
   background: #fff;
 }
 .lt-setting__main select:disabled { background: var(--app-bg); color: var(--ink-mute); cursor: not-allowed; }
+.lt-setting__value { font-family: var(--display); font-weight: 700; font-size: 13.5px; color: var(--ink); }
 .lt-setting__hint { font-size: 12px; color: var(--ink-soft); }
 
 /* #79 Referrer own-performance panel (Private mode). */

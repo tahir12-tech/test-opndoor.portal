@@ -63,8 +63,9 @@ export function Applications() {
 
   // Initial filters from the drill-through URL (?agency= / ?branch= / ?status= / ?deed=).
   // 'refunded' and 'awaiting' are status chips that cross-cut Paid (status stays Paid).
-  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting'>(() => {
+  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed'>(() => {
     if (params.get('deed') === 'awaiting') return 'awaiting';
+    if (params.get('deed') === 'delivery-failed') return 'delivery-failed';
     const s = params.get('status');
     return s === 'sent' || s === 'paid' || s === 'deed' || s === 'refunded' ? s : 'all';
   });
@@ -122,6 +123,11 @@ export function Applications() {
     ...(counts.awaiting > 0 || status === 'awaiting'
       ? [{ id: 'awaiting', label: <Pill variant="warn" style={{ background: 'none', padding: 0 }}>Awaiting signature</Pill>, count: counts.awaiting }]
       : []),
+    // Delivery failed: deed issued but not delivered to an agent contact (#84).
+    // Shown when there is anything to resend, or when the filter is deep-linked.
+    ...(counts.deliveryFailed > 0 || status === 'delivery-failed'
+      ? [{ id: 'delivery-failed', label: <Pill variant="warn" style={{ background: 'none', padding: 0 }}>Delivery failed</Pill>, count: counts.deliveryFailed }]
+      : []),
   ];
 
   const activeFilter = branch
@@ -162,7 +168,7 @@ export function Applications() {
       )}
 
       <div className="toolbar">
-        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting')} />
+        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed')} />
       </div>
 
       <div className="toolbar">

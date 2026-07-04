@@ -183,7 +183,7 @@ export async function remindSignature(documentId: string, ctx: RemindContext): P
   const doc = await docRes.json();
   const status: string = doc.status ?? "";
   if (TERMINAL_STATUSES.includes(status)) {
-    return { ok: false, error: `The deed is ${prettyStatus(status)}, so a reminder cannot be sent. Use "Replace and resend deed" to issue a fresh one.` };
+    return { ok: false, error: `The deed is ${prettyStatus(status)}, so a reminder cannot be sent. Issue a fresh deed from the application instead.` };
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recips: any[] = Array.isArray(doc.recipients) ? doc.recipients : [];

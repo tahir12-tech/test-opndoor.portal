@@ -14,6 +14,8 @@
 import type { ApplicationDetail, ApplicationSummary, DeedState, PartnerScope, Role, Status } from './types';
 import { ALL_PARTNERS } from './types';
 import { AGENT_ADDR, APPLICATION_RECORDS as RECORDS_SEED, APPLICATIONS_LIST as LIST_SEED, type AppRecord } from './mock/applications';
+import { partnerName } from './partnersService';
+import { contactForApplication } from './orgService';
 import { SUPABASE_ENABLED, sb } from '@/lib/supabase';
 
 // Working copies. Seeded from the mock; replaced from Supabase after login.
@@ -99,8 +101,10 @@ export interface AppScopeOpts {
 }
 
 export interface AppFilterOpts extends AppScopeOpts {
-  /** 'refunded' and 'awaiting' (deed out for signature) are cross-cuts of Paid. */
-  status?: Status | 'all' | 'refunded' | 'awaiting';
+  /** 'refunded' and 'awaiting' (deed out for signature) are cross-cuts of Paid;
+      'delivery-failed' is a cross-cut of Deed (issued but not delivered to an
+      agent contact, #84). */
+  status?: Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed';
   agency?: string;
   branch?: string;
   q?: string;
@@ -115,15 +119,17 @@ function scopedSet(opts: AppScopeOpts): ApplicationSummary[] {
   return set;
 }
 
-export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number } {
+export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number } {
   const set = scopedSet(opts);
   // 'refunded' and 'awaiting' overlap 'paid' (both keep status Paid by design), so
   // they are counted in addition to paid, not instead of it. all = sent+paid+deed.
-  const counts = { all: set.length, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0 };
+  // 'deliveryFailed' is a cross-cut of Deed (issued but no reachable agent contact).
+  const counts = { all: set.length, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0, deliveryFailed: 0 };
   set.forEach((r) => {
     counts[r.status]++;
     if (r.refunded) counts.refunded++;
     if (r.awaitingSignature) counts.awaiting++;
+    if (r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact) counts.deliveryFailed++;
   });
   return counts;
 }
@@ -135,6 +141,7 @@ export function getApplications(opts: AppFilterOpts): ApplicationSummary[] {
   rows = rows.filter((r) => {
     if (opts.status === 'refunded') { if (!r.refunded) return false; }
     else if (opts.status === 'awaiting') { if (!r.awaitingSignature) return false; }
+    else if (opts.status === 'delivery-failed') { if (!(r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact)) return false; }
     else if (opts.status && opts.status !== 'all' && r.status !== opts.status) return false;
     if (opts.branch && r.branch !== opts.branch) return false;
     if (opts.agency && r.agency !== opts.agency) return false;
@@ -245,7 +252,7 @@ function notFoundDetail(ref: string): ApplicationDetail {
   return {
     ref, status: 'sent', statusLabel: '', name: '', initials: '', title: '', role: '', fullName: '',
     dob: '', email: '', phone: '', addr1: '', addr2: '', city: '', county: '', postcode: '',
-    agency: '', branch: '', agentAddr: '', rent: '', rentNum: 0, referrer: '',
+    agency: '', branch: '', partnerName: '', agentAddr: '', rent: '', rentNum: 0, referrer: '',
     tenancyStart: '', tenancyStartDate: now, sentAt: now, paidAt: null, deedAt: null,
     sentStr: '', paidStr: null, deedStr: null, issue: null, expiry: null, annual: '',
     paymentDate: null, owner: 0, notFound: true,
@@ -329,6 +336,8 @@ export function getApplicationDetail(ref: string | null): ApplicationDetail {
     postcode: r.postcode,
     agency: r.agency,
     branch: r.branch,
+    // Partner is only on the summary LIST (both mock and live), not AppRecord.
+    partnerName: partnerName(LIST.find((x) => x.ref === r.ref)?.partner ?? ''),
     agentAddr: AGENT_ADDR[r.branch] || `${r.branch}, London`,
     rent: `£${r.rent.toLocaleString('en-GB')}`,
     rentNum: r.rent,
@@ -438,11 +447,23 @@ export async function createReferral(input: CreateReferralInput): Promise<Create
  * signature, or archive+replace once executed. Returns the server's summary.
  * No-op in mock mode. The UI calculation is amendTenancyStart above.
  */
-export async function amendTenancyStartDb(ref: string, newStart: Date): Promise<string | undefined> {
+/** #81 Count of submitted-and-unresolved agent tenancy-start corrections in the
+    caller's scope (admin: all; management: their partner). 0 in mock mode. */
+export async function pendingTenancyCorrections(): Promise<number> {
+  if (!SUPABASE_ENABLED) return 0;
+  const { data, error } = await sb().rpc('count_pending_tenancy_corrections');
+  if (error) return 0;
+  return Number(data) || 0;
+}
+
+export async function amendTenancyStartDb(ref: string, newStart: Date, confirmReissue = false): Promise<string | undefined> {
   if (!SUPABASE_ENABLED) return undefined;
   const iso = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
-  const { data, error } = await sb().functions.invoke('amend-tenancy-start', { body: { ref, newStart: iso } });
+  const { data, error } = await sb().functions.invoke('amend-tenancy-start', { body: { ref, newStart: iso, confirmReissue } });
   if (error) throw new Error('Could not amend the tenancy start date.');
+  // #82 A signed deed needs an explicit consequence confirmation before the server
+  // proceeds; surface that distinctly so the UI can prompt and retry.
+  if (data?.needsConfirm) { const e = new Error(data.error || 'Confirmation required.'); (e as Error & { needsConfirm?: boolean }).needsConfirm = true; throw e; }
   if (!data?.ok) throw new Error(data?.error || 'Could not amend the tenancy start date.');
   return data.message as string | undefined;
 }

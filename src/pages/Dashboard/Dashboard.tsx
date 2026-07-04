@@ -7,12 +7,12 @@
    Every figure comes from analyticsService/exportsService (the parametric
    model). INTEGRATION points live in those services, not here.
    ===================================================================== */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ALL_PARTNERS, buildApplicationDoc, buildBordereauCsv, buildPerformanceDoc, downloadCsv, exportBranded,
+  ALL_PARTNERS, buildApplicationDoc, buildBordereauCsv, buildExpiriesCsv, buildPerformanceDoc, downloadCsv, exportBranded,
   fmtBig, getCommissionSettlement, getAgentCommissionSettlement, livePartnerBreakdown, getDashboardData, getPartners, getPeriods, getTrend, partnerName,
-  getBordereauRate, getBordereauRateMeta, setBordereauRate,
+  getBordereauRate, getBordereauRateMeta, setBordereauRate, pendingTenancyCorrections,
   type LeagueRow, type Period, type TrendRow,
 } from '@/data';
 import { BASIS_META, type ExportBasis } from '@/data';
@@ -101,11 +101,22 @@ export function Dashboard() {
   const partnerDue = settlement.partners.reduce((s, p) => s + p.commission, 0);
   const agentDue = agentSettlement.agencies.reduce((s, a) => s + a.commission, 0);
   const settleDayMonth = `${settlement.settlementDate.getDate()} ${settlement.settlementDate.toLocaleDateString('en-GB', { month: 'long' })}`;
+  // #81 Agent-reported tenancy-start corrections awaiting opndoor review.
+  const [corrections, setCorrections] = useState(0);
+  useEffect(() => {
+    if (role === 'referrer') { setCorrections(0); return; }
+    let alive = true;
+    pendingTenancyCorrections().then((n) => { if (alive) setCorrections(n); }).catch(() => { if (alive) setCorrections(0); });
+    return () => { alive = false; };
+  }, [role]);
+
   const naAwaiting = d.live && d.awaiting > 0;
   const naStuckSent = d.stuckSent !== '0';
   const naSettlements = d.live && canSeeSettlements && (partnerDue > 0 || agentDue > 0);
   const naNoContact = d.live && d.deedsNoContact > 0;
-  const hasNeedsAttention = naAwaiting || naStuckSent || naSettlements || naNoContact;
+  const naCorrections = canSeeSettlements && corrections > 0;
+  const naLapsing = d.live && canSeeSettlements && d.lapsing14 > 0;
+  const hasNeedsAttention = naAwaiting || naStuckSent || naSettlements || naNoContact || naCorrections || naLapsing;
 
   // #25: the agent settlement can span many agencies, so show the top 5 inline and
   // collapse the rest behind a "View all" expander. The Performance export always
@@ -182,6 +193,9 @@ export function Dashboard() {
   const [bdxBusy, setBdxBusy] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
   const [appsBasis, setAppsBasis] = useState<ExportBasis>('referred');
+  // #86 Expiries export, defaulting to the month ~6 weeks out (the cron cohort).
+  const [expOpen, setExpOpen] = useState(false);
+  const [expMonth, setExpMonth] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 42); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
 
   function exportSummary() {
     void exportBranded(buildPerformanceDoc(role, period as Period));
@@ -195,6 +209,12 @@ export function Dashboard() {
     // Default to the stored rate (not a hard-coded value), so it no longer reverts.
     setBdxRate(String(getBordereauRate()));
     setBdxOpen(true);
+  }
+  function runExpiries() {
+    const mv = (expMonth || '2026-06').split('-');
+    const out = buildExpiriesCsv(role, +mv[0], +mv[1] - 1);
+    if (out) downloadCsv(out.csv, out.filename);
+    setExpOpen(false);
   }
   async function exportBordereau() {
     if (bdxBusy) return;
@@ -243,6 +263,11 @@ export function Dashboard() {
               <Icon name="apps" /> Application export
             </Button>
           </RoleOnly>
+          <RoleOnly roles={['superadmin', 'management']}>
+            <Button variant="ghost" size="sm" onClick={() => setExpOpen(true)} title="Guarantees expiring in a chosen month, soonest first, for renewal outreach">
+              <Icon name="calendar" /> Expiries
+            </Button>
+          </RoleOnly>
           <RoleOnly roles={['superadmin']}>
             <Button variant="primary" size="sm" onClick={openBordereau} title="Monthly underwriter bordereau (C&C format) with full tenant details. opndoor admin only.">
               <Icon name="shield" /> Bordereau
@@ -276,9 +301,23 @@ export function Dashboard() {
               </Link>
             )}
             {naNoContact && (
-              <Link className="na-stat na-stat--warn" to="/agencies" title="Deeds issued with no agent contact on file; add a claim contact, then resend the deed">
+              <Link className="na-stat na-stat--warn" to="/applications?deed=delivery-failed" title="Deeds issued but not delivered to the agent (no reachable claim contact). Open the list to add a contact, then resend the deed.">
                 <span className="na-stat__n">{d.deedsNoContact}</span>
-                <span className="na-stat__l">deed{d.deedsNoContact === 1 ? '' : 's'} issued · no agent contact on file</span>
+                <span className="na-stat__l">deed{d.deedsNoContact === 1 ? '' : 's'} issued · delivery failed, view and resend</span>
+                <Icon name="arrowRight" className="na-stat__go" />
+              </Link>
+            )}
+            {naCorrections && (
+              <Link className="na-stat na-stat--warn" to="/activity" title="An agent reported that a deed's tenancy start date is incorrect. Review in the activity feed and amend the application if correct.">
+                <span className="na-stat__n">{corrections}</span>
+                <span className="na-stat__l">tenancy-start correction{corrections === 1 ? '' : 's'} reported by agents, review</span>
+                <Icon name="arrowRight" className="na-stat__go" />
+              </Link>
+            )}
+            {naLapsing && (
+              <Link className="na-stat na-stat--warn" to="/activity" title="In-force guarantees expiring within 14 days. Arrange a renewal or a fresh referral so cover stays in place.">
+                <span className="na-stat__n">{d.lapsing14}</span>
+                <span className="na-stat__l">guarantee{d.lapsing14 === 1 ? '' : 's'} lapsing within 14 days</span>
                 <Icon name="arrowRight" className="na-stat__go" />
               </Link>
             )}
@@ -352,26 +391,25 @@ export function Dashboard() {
         {/* HERO KPIs */}
         <section className="herorow">
           <RoleOnly roles={['superadmin', 'management']}>
+            {/* #85 Net fees leads the money block; Total guaranteed rent value second. */}
             <div className="card hero-kpi hero-kpi--dark">
-              <div className="kpi__label">Total guaranteed rent value</div>
+              <div className="kpi__label">Net fees{d.live ? ' (after refunds)' : ''}</div>
               <div className="hero-kpi__row" style={{ marginTop: 10 }}>
-                <span className="hero-kpi__big">{d.guaranteed}</span>
+                <span className="hero-kpi__big">{d.live ? d.net : d.fees}</span>
               </div>
               <p style={{ position: 'relative', fontSize: 13, color: 'rgba(255,255,255,0.72)', marginTop: 8, maxWidth: '42ch' }}>
-                Annual rent under guarantee across {d.deedcount} issued deeds, at an initial 12-month guarantee period each.
+                Guarantor fees collected across {d.deedcount} issued deeds, one month's rent each, net of any refunds.
               </p>
-              {d.live ? (
+              {d.live && (
                 <div className="hero-kpi__split">
                   <div><span className="k">Fees collected (gross)</span><span className="v">{d.feesGross}</span></div>
                   <div><span className="k">Less refunds{d.refundCount ? ` (${d.refundCount})` : ''}</span><span className="v v--neg">{d.refunds}</span></div>
-                  <div><span className="k">Net fees</span><span className="v">{d.net}</span></div>
-                </div>
-              ) : (
-                <div className="hero-kpi__sub">
-                  <span className="lbl">Guarantor fees collected (one month's rent each)</span>
-                  <span className="val">{d.fees}</span>
                 </div>
               )}
+              <div className="hero-kpi__sub" style={{ marginTop: 14 }}>
+                <span className="lbl">Total guaranteed rent value</span>
+                <span className="val">{d.guaranteed}</span>
+              </div>
             </div>
           </RoleOnly>
 
@@ -452,7 +490,7 @@ export function Dashboard() {
                 <div>
                   <div className="kpi__label">Commission by partner</div>
                   <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-                    Partner and agent commission for the <b>selected period</b>, gross and net of refunds. Net columns reconcile to the summary totals. Settlement (what is actually payable next) is calculated separately, for the <b>prior calendar month</b>.
+                    Partner and agent commission for the <b>selected period</b>, gross and net of refunds. Net columns reconcile to the summary totals. Settlement (what is actually payable next) is calculated separately, for the <b>prior calendar month</b>. Active partners are listed even with no paid referrals in the period; paused or onboarding partners with no activity are not shown.
                   </div>
                 </div>
               </div>
@@ -683,6 +721,35 @@ export function Dashboard() {
             <div className="bdx__foot">
               <Button variant="ghost" onClick={() => setAppsOpen(false)}>Cancel</Button>
               <Button variant="primary" onClick={runAppsExport}>Export</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* #86 EXPIRIES MODAL (management + opndoor admin) */}
+      {expOpen && (role === 'superadmin' || role === 'management') && (
+        <div className="bdx-scrim is-open" onMouseDown={(e) => e.target === e.currentTarget && setExpOpen(false)}>
+          <div className="bdx" role="dialog" aria-modal="true">
+            <div className="bdx__head">
+              <div>
+                <div className="bdx__title">Expiring guarantees</div>
+                <div className="bdx__sub">Every in-force guarantee expiring in the chosen month, soonest first. {role === 'superadmin' ? 'All partners.' : 'Your partner only.'} Already-expired guarantees are never shown.</div>
+              </div>
+              <button className="bdx__close" aria-label="Close" onClick={() => setExpOpen(false)}><Icon name="x" /></button>
+            </div>
+            <div className="bdx__body">
+              <div className="field">
+                <label htmlFor="exp-month">Month (by guarantee expiry date)</label>
+                <input type="month" id="exp-month" min="2024-09" max="2028-12" value={expMonth} onChange={(e) => setExpMonth(e.target.value)} />
+              </div>
+              <div className="bdx__warn" style={{ background: 'var(--white-lilac)', borderColor: 'rgba(211,100,251,0.25)' }}>
+                <Icon name="info" />
+                <span>Columns: guarantee reference, tenant name, property address, agency and branch, tenancy start, expiry date, days remaining, monthly and annualised rent, and referrer. Management receive this cohort by email six weeks before the month begins.</span>
+              </div>
+            </div>
+            <div className="bdx__foot">
+              <Button variant="ghost" onClick={() => setExpOpen(false)}>Cancel</Button>
+              <Button variant="primary" onClick={runExpiries}>Download expiries</Button>
             </div>
           </div>
         </div>

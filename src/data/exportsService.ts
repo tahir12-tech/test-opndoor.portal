@@ -872,3 +872,62 @@ export function buildBordereauCsv(role: Role, year: number, m0: number, insuranc
   }
   return { csv: toCSV(rows), filename: `opndoor-bordereau-${year}-${pad(m0 + 1)}.csv` };
 }
+
+/**
+ * #86 Monthly expiry cohort. Every in-force guarantee whose EXPIRY DATE falls in
+ * the chosen calendar month, soonest-first, already-expired excluded. Role-scoped
+ * (Management sees only their partner; opndoor admin the whole book) and gated to
+ * management + opndoor admin, like the Application export. Live-sourced in
+ * Supabase mode; a modelled generator keeps the demo download non-empty.
+ */
+export function buildExpiriesCsv(role: Role, year: number, m0: number): { csv: string; filename: string } | null {
+  if (role !== 'superadmin' && role !== 'management') return null;
+  const mStart = new Date(year, m0, 1, 0, 0, 0, 0);
+  const mEnd = new Date(year, m0 + 1, 0, 23, 59, 59, 999);
+  const nowD = new Date();
+  const today = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate());
+  const daysLeft = (d: Date) => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - today.getTime()) / 86400000);
+  const colHeader: CsvRow = ['Guarantee reference', 'Tenant name', 'Property address', 'Agency', 'Branch', 'Tenancy start', 'Expiry date', 'Days remaining', 'Monthly rent', 'Annualised rent', 'Referrer'];
+
+  const dataRows: CsvRow[] = [];
+  if (liveAvailable()) {
+    const apps = scopeFull(allFull(), role, scopeFor(role))
+      .map((a) => ({ a, exp: a.expiry ?? (a.tenancyStart ? guaranteeExpiry(a.tenancyStart) : null) }))
+      .filter(({ a, exp }) => a.status === 'deed' && !a.refunded && exp !== null && exp >= mStart && exp <= mEnd && daysLeft(exp) >= 0)
+      .sort((x, y) => (x.exp!.getTime() - y.exp!.getTime()) || x.a.ref.localeCompare(y.a.ref));
+    for (const { a, exp } of apps) {
+      const rec = findRecord(a.ref);
+      const addr = [rec?.addr1, rec?.addr2, rec?.city, rec?.postcode].filter(Boolean).join(', ');
+      dataRows.push([a.ref, rec?.name ?? '', addr, a.agency, a.branch, a.tenancyStart ? dmy(a.tenancyStart) : '', dmy(exp!), String(daysLeft(exp!)), gbp(a.rent), gbp(a.rent * 12), a.referrer ?? '']);
+    }
+  } else {
+    const AG = ['Bracken House Lettings', 'Meridian Residential', 'Crowngate Estates'];
+    const BR = ['Head office', 'City branch', 'Riverside branch'];
+    const N = 6 + ((year * 12 + m0) % 5);
+    const daysInMonth = new Date(year, m0 + 1, 0).getDate();
+    for (let i = 0; i < N; i++) {
+      const day = 1 + Math.floor((i / N) * (daysInMonth - 1));
+      const exp = new Date(year, m0, day);
+      if (daysLeft(exp) < 0) continue; // expired never accumulate
+      const tStart = new Date(exp.getFullYear() - 1, exp.getMonth(), exp.getDate() + 1);
+      const st = BX_STREETS[(i * 3) % BX_STREETS.length];
+      const flat = BX_FLATS[i % BX_FLATS.length];
+      const rent = APP_RENTS[(i * 7) % APP_RENTS.length];
+      const tenant = `${BX_FIRST[(i * 5) % BX_FIRST.length]} ${BX_LAST[(i * 3) % BX_LAST.length]}`;
+      const addr = [(flat ? `${flat}, ` : '') + st[0], 'London', st[1]].filter(Boolean).join(', ');
+      dataRows.push([`GR-${41000 + (year * 12 + m0) * 50 + i}`, tenant, addr, AG[i % AG.length], BR[i % BR.length], dmy(tStart), dmy(exp), String(daysLeft(exp)), gbp(rent), gbp(rent * 12), APP_REFERRERS[i % APP_REFERRERS.length]]);
+    }
+  }
+
+  const rows: CsvRow[] = [];
+  rows.push(['opndoor Guarantee Referral Portal - guarantees expiring']);
+  rows.push(['Generated', new Date().toLocaleString('en-GB')]);
+  rows.push(['Month', `${MONTH_NAMES[m0]} ${year} (by guarantee expiry date, soonest first)`]);
+  rows.push(['Scope', role === 'superadmin' ? 'All partners (opndoor whole book)' : 'Your partner']);
+  rows.push(['Guarantees expiring', String(dataRows.length)]);
+  rows.push(['Currency', 'GBP']);
+  rows.push([]);
+  rows.push(colHeader);
+  for (const r of dataRows) rows.push(r);
+  return { csv: toCSV(rows), filename: `opndoor-expiries-${year}-${pad(m0 + 1)}.csv` };
+}

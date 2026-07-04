@@ -1,0 +1,30 @@
+/* #81 Public tenancy-start correction page. */
+.tcx {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--app-bg);
+}
+.tcx__card {
+  width: 480px;
+  max-width: 100%;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 30px 32px;
+}
+.tcx__brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 20px; }
+.tcx__brand .wordmark { font-size: 22px; }
+.tcx__sub { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-mute); }
+.tcx__title { font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); margin: 0 0 10px; }
+.tcx__muted { font-size: 14px; line-height: 1.6; color: var(--ink-soft); margin: 0; }
+.tcx__form { display: grid; gap: 16px; margin-top: 20px; }
+.tcx__form textarea {
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  padding: 11px 14px; font-family: var(--body); font-size: 14px; color: var(--ink);
+  background: #fff; width: 100%; resize: vertical;
+}
+.tcx__form textarea:focus { outline: none; border-color: var(--heliotrope-deep); box-shadow: 0 0 0 3px rgba(211,100,251,0.15); }
+.tcx__error { font-size: 13px; font-weight: 600; color: var(--danger); margin: 0; }

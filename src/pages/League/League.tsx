@@ -7,8 +7,10 @@
    Referrers (#79): a single own-partner Referrers board (no Agencies/Branches
    tabs, no export), showing positions and referral counts. Fees collected are
    shown only when their partner's setting is "Full"; commission is never shown.
-   The per-partner setting (Full / Rankings only / Private) is editable here by
-   that partner's Management and by opndoor admin.
+   The per-partner setting (Full / Rankings only / Private, #88) is edited by
+   opndoor admin in Manage partner; Management edits it here for their own partner
+   (they cannot reach the admin-only Manage partner screen), and admin sees it
+   read-only here.
 
    Data comes from getLeague / getReferrerLeague (the service). Sorting,
    searching and paging are presentation concerns handled here.
@@ -182,13 +184,13 @@ function FullLeagueView() {
   const [page, setPage] = useState(0);
   const [partner, setPartner] = useState('');
 
-  // #79 The partner whose referrer-leaderboard setting this control edits: the
-  // admin's in-page filter, or Management's own (home) partner.
+  // #88 The referrer-leaderboard setting's canonical home is Manage partner (opndoor
+  // admin). Management cannot reach that admin-only screen, so they keep an editable
+  // control here for their own partner; opndoor admin sees a read-only value here and
+  // edits it in Manage partner. Same governed RPC + server enforcement either way.
   const settingPartnerId = role === 'superadmin' ? partner : (partnerScope !== ALL_PARTNERS ? partnerScope : '');
   const [mode, setMode] = useState<LeaderboardMode>('full');
-  useEffect(() => {
-    setMode(settingPartnerId ? getReferrerLeaderboardMode(settingPartnerId) : 'full');
-  }, [settingPartnerId]);
+  useEffect(() => { setMode(settingPartnerId ? getReferrerLeaderboardMode(settingPartnerId) : 'full'); }, [settingPartnerId]);
   const partnerLabel = settingPartnerId ? (getPartners().find((p) => p.id === settingPartnerId)?.name ?? 'this partner') : '';
 
   async function changeMode(next: LeaderboardMode) {
@@ -272,19 +274,25 @@ function FullLeagueView() {
         </div>
       </div>
 
-      {/* #79 Referrer-leaderboard visibility for this partner (admin/management). */}
-      {(role === 'superadmin' || role === 'management') && (
+      {/* #88 Management edits their own partner's mode here (they cannot reach the
+          admin-only Manage partner screen); opndoor admin sees it read-only and
+          edits it in Manage partner. */}
+      {(role === 'superadmin' || role === 'management') && settingPartnerId && (
         <div className="lt-setting">
           <div className="lt-setting__main">
-            <label htmlFor="rl-mode">Referrer leaderboard visibility{partnerLabel ? ` · ${partnerLabel}` : ''}</label>
-            <select id="rl-mode" value={mode} disabled={!settingPartnerId} onChange={(e) => void changeMode(e.target.value as LeaderboardMode)}>
-              {(Object.keys(MODE_LABEL) as LeaderboardMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
-            </select>
+            <label htmlFor="rl-mode">Referrer leaderboard{partnerLabel ? ` · ${partnerLabel}` : ''}</label>
+            {role === 'management' ? (
+              <select id="rl-mode" value={mode} onChange={(e) => void changeMode(e.target.value as LeaderboardMode)}>
+                {(Object.keys(MODE_LABEL) as LeaderboardMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+              </select>
+            ) : (
+              <span className="lt-setting__value">{MODE_LABEL[mode]}</span>
+            )}
           </div>
           <span className="lt-setting__hint">
-            {settingPartnerId
-              ? 'What referrers at this partner see on their own leaderboard. Commission is never shown to referrers.'
-              : 'Select a single partner above to set what its referrers see.'}
+            {role === 'management'
+              ? 'What referrers at your partner see on their own leaderboard. Commission is never shown to referrers.'
+              : 'What referrers at this partner see. Change this in Manage partner. Commission is never shown to referrers.'}
           </span>
         </div>
       )}

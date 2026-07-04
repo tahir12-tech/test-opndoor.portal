@@ -12,7 +12,7 @@
    ===================================================================== */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canReplaceDeed, canSendDeed, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, voidRegenerateDeed, type PaymentInfo } from '@/data';
+import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, type PaymentInfo } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -97,6 +97,7 @@ export function ApplicationDetail() {
   const [amendedDates, setAmendedDates] = useState<{ issue: string; expiry: string } | null>(null);
   const [extraActivity, setExtraActivity] = useState<Activity[]>([]);
   const [amendOpen, setAmendOpen] = useState(false);
+  const [confirmReissueOpen, setConfirmReissueOpen] = useState(false); // #82 signed-deed consequence confirm
   const [amendInput, setAmendInput] = useState('');
 
   // send-deed-to-agent
@@ -168,14 +169,6 @@ export function ApplicationDetail() {
     else toast(r.error || 'Could not send the deed.');
   };
 
-  const doReplaceResend = async () => {
-    if (!window.confirm('This cancels the deed currently awaiting signature and sends the tenant a new one. The old signing link will stop working.')) return;
-    setDeedBusy(true);
-    const r = await voidRegenerateDeed(d.ref);
-    setDeedBusy(false);
-    if (r.ok) { toast(r.message || 'Deed replaced and resent to the tenant.'); void loadPayment(); }
-    else toast(r.error || 'Could not replace and resend the deed.');
-  };
 
   const doDownloadDeed = async () => {
     if (!SUPABASE_ENABLED) return;
@@ -259,6 +252,9 @@ export function ApplicationDetail() {
   const PAYMENT = d.paymentDate;
   // Before payment (Sent) amending just corrects data; after payment it reissues the deed.
   const reissues = d.status !== 'sent';
+  // #82 Amending a SIGNED (executed) deed is destructive: void + reissue + agent
+  // re-notification. It needs an explicit consequence confirmation before saving.
+  const executed = d.status === 'deed' || paymentInfo?.deedState === 'executed';
   // Who may amend: Sent -> any viewing role (Referrer only their own); Paid/Deed -> Management + opndoor admin.
   const canAmend = canAmendTenancyStart(role, d.status, d.owner === 1, paymentInfo?.deedState ?? null);
 
@@ -275,7 +271,9 @@ export function ApplicationDetail() {
       amendText = 'This is the current start date';
     } else {
       amendTone = 'ok';
-      amendText = reissues ? 'Valid. A new deed will be issued with this date.' : 'Valid. The tenancy start date will be updated.';
+      amendText = executed
+        ? 'Valid. The signed deed will be voided and a corrected deed reissued to the tenant to sign.'
+        : reissues ? 'Valid. A new deed will be issued with this date.' : 'Valid. The tenancy start date will be updated.';
       canSave = true;
     }
   }
@@ -285,15 +283,20 @@ export function ApplicationDetail() {
     setAmendOpen(true);
   }
 
-  async function saveAmend() {
+  async function saveAmend(confirmReissue = false) {
     if (!parsed || !canSave) return;
+    // #82 On a signed deed, require the explicit consequence confirmation first.
+    if (executed && !confirmReissue) { setConfirmReissueOpen(true); return; }
     let serverMsg: string | undefined;
     try {
-      serverMsg = await amendTenancyStartDb(d.ref, parsed);
+      serverMsg = await amendTenancyStartDb(d.ref, parsed, confirmReissue);
     } catch (err) {
+      // Defence in depth: if the server still asks for confirmation, prompt for it.
+      if (err && typeof err === 'object' && (err as { needsConfirm?: boolean }).needsConfirm) { setConfirmReissueOpen(true); return; }
       toast(err instanceof Error ? err.message : 'Could not amend the tenancy start date.');
       return;
     }
+    setConfirmReissueOpen(false);
     const result = amendTenancyStart(d.status, parsed);
     setCurrentStart(parsed);
     if (result.reissued) {
@@ -329,8 +332,6 @@ export function ApplicationDetail() {
   const eff = effectiveContacts(resolved.agency, resolved.branch);
   const sendSrc = eff.inherited ? `agency default for ${d.agency}` : `${d.branch} branch`;
   const isReferrer = role === 'referrer';
-  // Replace-and-resend is a destructive recovery action: Management + opndoor admin only.
-  const canManage = canReplaceDeed(role);
   // Who may send the issued deed: Referrers only on their own; Management + opndoor admin on any in scope.
   const canSend = canSendDeed(role, d.owner === 1);
   // Referrers are send-only: they can only send when a recipient is already resolved.
@@ -417,6 +418,7 @@ export function ApplicationDetail() {
               <Pill variant={d.status}>{d.statusLabel}</Pill>
               <span>·</span><span>Reference {d.ref}</span>
               <span>·</span><span>{d.branch} · {d.agency}</span>
+              {role !== 'referrer' && d.partnerName && <><span>·</span><span>{d.partnerName}</span></>}
             </div>
           </div>
         </div>
@@ -461,6 +463,7 @@ export function ApplicationDetail() {
             <CardBody style={{ paddingTop: 6, paddingBottom: 6 }}>
               <div className="drow"><span className="drow__k">Agency</span><span className="drow__v"><b>{d.agency}</b></span></div>
               <div className="drow"><span className="drow__k">Branch</span><span className="drow__v">{d.branch}</span></div>
+              {role !== 'referrer' && d.partnerName && <div className="drow"><span className="drow__k">Partner</span><span className="drow__v">{d.partnerName}</span></div>}
               <div className="drow"><span className="drow__k">Address</span><span className="drow__v">{d.agentAddr}</span></div>
               <div className="drow"><span className="drow__k">Deed in favour of</span><span className="drow__v">{d.addr1}, {d.postcode}</span></div>
             </CardBody>
@@ -600,11 +603,6 @@ export function ApplicationDetail() {
                     <div style={{ marginTop: 12 }}>
                       <Button variant="primary" size="sm" block onClick={doResendDeed} disabled={deedBusy}><Icon name="send" /> {deedBusy ? 'Sending…' : 'Resend signature request'}</Button>
                     </div>
-                    {canManage && (
-                      <div style={{ marginTop: 10 }}>
-                        <Button variant="ghost" size="sm" block onClick={doReplaceResend} disabled={deedBusy}><Icon name="refresh" /> Replace and resend deed</Button>
-                      </div>
-                    )}
                   </>
                 ) : (
                   <>
@@ -656,7 +654,7 @@ export function ApplicationDetail() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setAmendOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={saveAmend} disabled={!canSave}>{reissues ? 'Save and reissue deed' : 'Save start date'}</Button>
+            <Button variant="primary" onClick={() => saveAmend()} disabled={!canSave}>{executed ? 'Review consequences' : reissues ? 'Save and reissue deed' : 'Save start date'}</Button>
           </>
         }
       >
@@ -672,6 +670,28 @@ export function ApplicationDetail() {
           <Icon name={amendTone === 'err' ? 'info' : 'check'} strokeWidth={2.4} style={amendTone === 'neutral' ? { color: 'var(--ink-mute)' } : amendTone === 'ok' ? { color: 'var(--deed)' } : undefined} />
           {amendText}
         </div>
+      </Modal>
+
+      {/* #82 SIGNED-DEED CONSEQUENCE CONFIRMATION (stacked on the amend modal) */}
+      <Modal
+        open={confirmReissueOpen}
+        onClose={() => setConfirmReissueOpen(false)}
+        width={460}
+        title="This deed is signed. Amend anyway?"
+        sub="Deed and application data must never disagree, so amending the tenancy start on a signed deed replaces the deed."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmReissueOpen(false)}>Cancel</Button>
+            <Button variant="primary" className="btn--danger" onClick={() => void saveAmend(true)}>Void, reissue and amend</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: 13.5, color: 'var(--ink-soft)', lineHeight: 1.6, margin: 0 }}>Proceeding will:</p>
+        <ul style={{ fontSize: 13.5, color: 'var(--ink-soft)', lineHeight: 1.6, margin: '8px 0 0', paddingLeft: 20 }}>
+          <li>void and archive the current signed deed;</li>
+          <li>issue a corrected deed and send it to the tenant to sign again;</li>
+          <li>re-notify the agent once the corrected deed is signed.</li>
+        </ul>
       </Modal>
 
       {/* SEND DEED TO AGENT MODAL */}

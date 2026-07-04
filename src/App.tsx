@@ -13,6 +13,7 @@ import { ForgotPassword } from '@/pages/ForgotPassword/ForgotPassword';
 import { ResetPassword } from '@/pages/auth/ResetPassword';
 import { PaymentConfirmed } from '@/pages/Pay/PaymentConfirmed';
 import { PaymentRetry } from '@/pages/Pay/PaymentRetry';
+import { TenancyCorrection } from '@/pages/TenancyCorrection/TenancyCorrection';
 import { Dashboard } from '@/pages/Dashboard/Dashboard';
 import { League } from '@/pages/League/League';
 import { Activity } from '@/pages/Activity/Activity';
@@ -40,6 +41,8 @@ export function App() {
       {/* Public, unauthenticated tenant payment pages (post-Stripe redirect). */}
       <Route path="/pay/confirmed" element={<PaymentConfirmed />} />
       <Route path="/pay/retry" element={<PaymentRetry />} />
+      {/* Public: agent-reported tenancy-start correction, from the deed email (#81). */}
+      <Route path="/tenancy-correction" element={<TenancyCorrection />} />
 
       {/* authenticated shell (RequireAuth is a passthrough in mock/test mode) */}
       <Route element={<RequireAuth />}>

@@ -63,6 +63,18 @@
   top: auto;
   bottom: calc(100% + 4px);
 }
+/* #80 Portalled variant: rendered on document.body with a fixed position from
+   the trigger rect, so the table's overflow can never clip it. */
+.rowmenu__pop--portal {
+  display: block;
+  position: fixed;
+  /* Neutralise the base absolute anchors; the inline style sets exactly one of
+     top/bottom (down vs upward flip) so the other must stay auto. */
+  top: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 1000;
+}
 .rowmenu__item {
   display: flex;
   align-items: center;

@@ -69,7 +69,7 @@ function detailRow(label: string, value: string): string {
 // access, so the tone is comfort + completeness with no portal pitch.
 function deedAgentTemplate(p: {
   agencyName: string; tenantTitle: string; tenantName: string; addr1: string; postcode: string;
-  tenancyStartLabel: string; guaranteeRef: string; downloadUrl: string; intendedFor: string;
+  tenancyStartLabel: string; guaranteeRef: string; downloadUrl: string; correctionUrl: string; intendedFor: string;
 }): { subject: string; html: string } {
   const teamName = (p.agencyName || "").trim();
   const greet = teamName ? `Dear team at ${teamName},` : "Dear team,";
@@ -95,7 +95,8 @@ function deedAgentTemplate(p: {
       </table>
     </td></tr></table>
     ${button}
-    <p style="margin:12px 0 0;font-size:13px;color:${INK_SOFT};">Please keep the deed with the tenancy paperwork, it's the reference for any claim under the guarantee. The download link expires in a few days; if you ever need the deed re-sent, contact us quoting the reference.</p>`;
+    <p style="margin:12px 0 0;font-size:13px;color:${INK_SOFT};">Please keep the deed with the tenancy paperwork, it's the reference for any claim under the guarantee. The download link expires in a few days; if you ever need the deed re-sent, contact us quoting the reference.</p>
+    ${p.correctionUrl ? `<p style="margin:10px 0 0;font-size:12px;color:${INK_SOFT};">If the tenancy start date shown is incorrect, <a href="${p.correctionUrl}" style="color:${HELIOTROPE_DEEP};text-decoration:underline;">let us know</a>.</p>` : ""}`;
   return { subject, html: layout(inner, p.intendedFor) };
 }
 
@@ -132,6 +133,16 @@ export async function deliverDeedToAgent(service: any, target: DeedTarget, recip
     const { data: signed } = await service.storage.from("deeds").createSignedUrl(target.pdfPath, 604800); // 7 days
     downloadUrl = signed?.signedUrl ?? "";
   }
+  // #81 Mint a tokenised tenancy-correction link, expiring with the download link.
+  let correctionUrl = "";
+  const base = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
+  if (base) {
+    const { data: tok } = await service.from("tenancy_correction_tokens").insert({
+      application_id: target.appId, guarantee_ref: target.ref,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    }).select("token").maybeSingle();
+    if (tok?.token) correctionUrl = `${base}/tenancy-correction?token=${tok.token}`;
+  }
   const tpl = deedAgentTemplate({
     agencyName: target.agencyName,
     tenantTitle: target.tenantTitle,
@@ -141,6 +152,7 @@ export async function deliverDeedToAgent(service: any, target: DeedTarget, recip
     tenancyStartLabel: ddmmyyyy(target.tenancyStart),
     guaranteeRef: target.ref,
     downloadUrl,
+    correctionUrl,
     intendedFor: recipient.email,
   });
   const res = await sendEmail({ subject: tpl.subject, html: tpl.html });

@@ -6,7 +6,7 @@
    ===================================================================== */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { addPartner, getPartner, getPartners, orgCounts, updatePartnerSettings, getPartnerAudit, type PartnerAuditEntry, type PartnerSettingsInput, type PartnerStatus } from '@/data';
+import { addPartner, getPartner, getPartners, getReferrerLeaderboardMode, orgCounts, setReferrerLeaderboardMode, updatePartnerSettings, getPartnerAudit, type LeaderboardMode, type PartnerAuditEntry, type PartnerSettingsInput, type PartnerStatus } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
@@ -31,8 +31,18 @@ const asPct = (frac: number | undefined, fallback: number) => Math.round((frac !
 const AUDIT_LABEL: Record<string, string> = {
   partner_rate: 'Partner commission', agent_rate: 'Agent commission',
   status: 'Status', live_from: 'Live from', name: 'Name',
+  referrer_leaderboard: 'Referrer leaderboard',
 };
 const auditField = (f: string) => AUDIT_LABEL[f] ?? f;
+
+const LB_LABEL: Record<LeaderboardMode, string> = {
+  full: 'Full (rankings and fees)',
+  rankings: 'Rankings only (no fees)',
+  private: 'Private (own performance only)',
+};
+// Friendly audit values for the leaderboard field (raw values are full/rankings/private).
+const LB_SHORT: Record<string, string> = { full: 'Full', rankings: 'Rankings only', private: 'Private' };
+const auditValue = (f: string, v: string) => (f === 'referrer_leaderboard' ? (LB_SHORT[v] ?? v) : v);
 const dmy = (d: Date) =>
   `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
@@ -53,6 +63,7 @@ export function PartnerManagement() {
   const [status, setStatus] = useState<PartnerStatus>('active');
   const [partnerRate, setPartnerRate] = useState('25');
   const [agentRate, setAgentRate] = useState('10');
+  const [lbMode, setLbMode] = useState<LeaderboardMode>('full'); // #88 referrer leaderboard visibility
   const [audit, setAudit] = useState<PartnerAuditEntry[]>([]);
   const [saving, setSaving] = useState(false);
   // Pending rate change awaiting confirmation (current -> new), or null.
@@ -80,10 +91,28 @@ export function PartnerManagement() {
     setStatus(p.status || 'active');
     setPartnerRate(String(asPct(p.partnerRate, 0.25)));
     setAgentRate(String(asPct(p.agentRate, 0.1)));
+    setLbMode(getReferrerLeaderboardMode(id));
     setConfirm(null);
     setAudit([]);
     getPartnerAudit(id).then(setAudit).catch(() => setAudit([]));
     setOpen(true);
+  }
+
+  // #88 The referrer-leaderboard setting saves immediately (not via the rate save,
+  // which has a rate-confirmation early-return). Same governed RPC + audit.
+  async function changeLbMode(next: LeaderboardMode) {
+    if (!editingId) return;
+    const prev = lbMode;
+    setLbMode(next);
+    try {
+      await setReferrerLeaderboardMode(editingId, next);
+      await refreshData();
+      getPartnerAudit(editingId).then(setAudit).catch(() => { /* keep prior */ });
+      toast('Referrer leaderboard visibility updated.');
+    } catch (e) {
+      setLbMode(prev);
+      toast(e instanceof Error ? e.message : 'Could not update the setting.');
+    }
   }
 
   function readRate(v: string, fallback: number): number {
@@ -231,6 +260,21 @@ export function PartnerManagement() {
           </div>
         </div>
 
+        {/* #88 Referrer leaderboard visibility (per-partner policy, saves immediately). */}
+        {editingId && (
+          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16, marginTop: 16 }}>
+            <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 14, marginBottom: 3 }}>Referrer leaderboard</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-mute)', marginBottom: 12 }}>
+              What referrers at this partner see on the League Referrers tab. Commission is never shown to referrers.
+            </div>
+            <Field label="Visibility" htmlFor="pm-lb-mode">
+              <select id="pm-lb-mode" value={lbMode} onChange={(e) => void changeLbMode(e.target.value as LeaderboardMode)}>
+                {(Object.keys(LB_LABEL) as LeaderboardMode[]).map((m) => <option key={m} value={m}>{LB_LABEL[m]}</option>)}
+              </select>
+            </Field>
+          </div>
+        )}
+
         {editingId && (
           <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16, marginTop: 16 }}>
             <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Recent changes</div>
@@ -239,7 +283,7 @@ export function PartnerManagement() {
                 {audit.map((e, i) => (
                   <li key={i} className="pm-audit__row">
                     <span className="pm-audit__field">{auditField(e.field)}</span>
-                    <span className="pm-audit__delta">{e.oldValue} → <b>{e.newValue}</b></span>
+                    <span className="pm-audit__delta">{auditValue(e.field, e.oldValue)} → <b>{auditValue(e.field, e.newValue)}</b></span>
                     <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
                   </li>
                 ))}

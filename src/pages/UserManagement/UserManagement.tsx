@@ -12,6 +12,7 @@
    + Management (route guard).
    ===================================================================== */
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   getPartner, getPartners, getUserAudit, getUsers, homePartner, inviteUser, partnerName,
@@ -100,6 +101,9 @@ export function UserManagement() {
   const refresh = () => setVersion((v) => v + 1);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [menuUp, setMenuUp] = useState(false);
+  // #80 The popover is portalled to document.body (so the table's overflow can
+  // never clip it); this holds the trigger's viewport rect for positioning.
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
@@ -119,7 +123,15 @@ export function UserManagement() {
   useEffect(() => {
     const close = () => setMenuOpenId(null);
     document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+    // The portalled popover no longer travels with the table, so close it on
+    // scroll/resize rather than letting it float out of place.
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('click', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
   }, []);
 
   const allUsers = getUsers({ viewer: role, team: teamMode, scope: selectedPartner });
@@ -242,12 +254,40 @@ export function UserManagement() {
 
   function toggleMenu(id: string, btn: HTMLElement) {
     setMenuOpenId((cur) => {
-      if (cur === id) return null;
-      // Flip the popover upward when there is not enough room below the button.
+      if (cur === id) { setMenuRect(null); return null; }
+      // Capture the trigger's viewport rect; the portalled popover is positioned
+      // fixed from it. Flip upward when there is not enough room below the button.
       const rect = btn.getBoundingClientRect();
+      setMenuRect(rect);
       setMenuUp(window.innerHeight - rect.bottom < 260);
       return id;
     });
+  }
+
+  // The action items for a row, rendered inside the portalled popover.
+  function menuItems(u: ManagedUser): ReactNode {
+    if (u.status === 'deactivated') {
+      return <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('reactivate', u); }}><Icon name="check" />Reactivate user</button>;
+    }
+    if (u.status === 'pending') {
+      return (
+        <>
+          <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('resend', u); }}><Icon name="send" />Resend invite</button>
+          {canEditRole(u) && <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('edit-role', u); }}><Icon name="edit" />Edit role</button>}
+        </>
+      );
+    }
+    return (
+      <>
+        {canEditRole(u) && <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('edit-role', u); }}><Icon name="edit" />Edit role</button>}
+        <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('reset-password', u); }}><Icon name="lock" />Reset password</button>
+        <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('reset-2fa', u); }}><Icon name="phone" />Reset 2FA</button>
+        {canDeactivate(u) && <>
+          <div className="rowmenu__sep" />
+          <button className="rowmenu__item rowmenu__item--danger" onClick={() => { setMenuOpenId(null); handleAction('deactivate', u); }}><Icon name="ban" />Deactivate user</button>
+        </>}
+      </>
+    );
   }
 
   function openAdd() {
@@ -373,7 +413,7 @@ export function UserManagement() {
                     <td className="soft">{u.lastActive}</td>
                     <td><Pill variant={sp[1]}>{sp[0]}</Pill></td>
                     <td style={{ textAlign: 'right' }}>
-                      <div className={`rowmenu${menuOpenId === u.id ? ' is-open' : ''}${menuOpenId === u.id && menuUp ? ' rowmenu--up' : ''}`}>
+                      <div className="rowmenu">
                         <button
                           className="rowmenu__btn"
                           aria-label="User actions"
@@ -381,26 +421,6 @@ export function UserManagement() {
                         >
                           <Icon name="dots" size={16} />
                         </button>
-                        <div className="rowmenu__pop">
-                          {u.status === 'deactivated' ? (
-                            <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('reactivate', u); }}><Icon name="check" />Reactivate user</button>
-                          ) : u.status === 'pending' ? (
-                            <>
-                              <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('resend', u); }}><Icon name="send" />Resend invite</button>
-                              {canEditRole(u) && <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('edit-role', u); }}><Icon name="edit" />Edit role</button>}
-                            </>
-                          ) : (
-                            <>
-                              {canEditRole(u) && <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('edit-role', u); }}><Icon name="edit" />Edit role</button>}
-                              <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('reset-password', u); }}><Icon name="lock" />Reset password</button>
-                              <button className="rowmenu__item" onClick={() => { setMenuOpenId(null); handleAction('reset-2fa', u); }}><Icon name="phone" />Reset 2FA</button>
-                              {canDeactivate(u) && <>
-                                <div className="rowmenu__sep" />
-                                <button className="rowmenu__item rowmenu__item--danger" onClick={() => { setMenuOpenId(null); handleAction('deactivate', u); }}><Icon name="ban" />Deactivate user</button>
-                              </>}
-                            </>
-                          )}
-                        </div>
                       </div>
                     </td>
                   </tr>
@@ -485,6 +505,20 @@ export function UserManagement() {
       >
         <p style={{ fontSize: 13.5, color: 'var(--ink-soft)', lineHeight: 1.55 }}>{confirm?.body}</p>
       </Modal>
+
+      {/* #80 Row actions popover, portalled to the body so the table's overflow
+          can never clip it, positioned fixed from the trigger's rect. */}
+      {menuOpenId && menuRect && (() => {
+        const u = users.find((x) => x.id === menuOpenId);
+        if (!u) return null;
+        const style: React.CSSProperties = menuUp
+          ? { position: 'fixed', bottom: window.innerHeight - menuRect.top + 4, left: Math.max(8, menuRect.right - 184) }
+          : { position: 'fixed', top: menuRect.bottom + 4, left: Math.max(8, menuRect.right - 184) };
+        return createPortal(
+          <div className="rowmenu__pop rowmenu__pop--portal" style={style}>{menuItems(u)}</div>,
+          document.body,
+        );
+      })()}
     </>
   );
 }

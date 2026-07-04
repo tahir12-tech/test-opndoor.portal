@@ -157,6 +157,8 @@ export interface ApplicationDetail {
   postcode: string;
   agency: string;
   branch: string;
+  /** Owning partner display name (shown to admin + management, #83). */
+  partnerName: string;
   agentAddr: string;
   rent: string;
   rentNum: number;
