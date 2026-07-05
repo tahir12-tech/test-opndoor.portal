@@ -310,6 +310,74 @@ rollback;
 Output: `BLOCKED (expected): new row violates row-level security policy for
 table "agent_contacts"`.
 
+### C8. Authenticator reset scope (`admin_reset_user_mfa`, #115)
+
+Resetting a user's second factor deletes their enrolled `auth.mfa_factors` and
+`auth.sessions` (so they re-enrol at next sign-in) and audits `reset_mfa`
+(`enrolled` → `reset`). The gate is: **AAL2 required**, then **opndoor admin for
+anyone, OR management for a non-superadmin user at their own partner** — never
+across partners, never on opndoor staff. This proof stages a synthetic factor,
+exercises every branch, and rolls back (non-destructive). It runs as the service
+role so the factor counts are visible; the function itself still gates on the
+impersonated JWT claims.
+
+```sql
+begin;
+-- stage a synthetic factor + session on two zero-factor demo referrers
+insert into auth.mfa_factors(id, user_id, friendly_name, factor_type, status, created_at, updated_at, secret)
+  select gen_random_uuid(), id, 'PROOF', 'totp', 'verified', now(), now(), 'x'
+  from public.users where email in ('daniel.wright@brackenhouse.co.uk','ruth.findlay@brackenhouse.co.uk');
+insert into auth.sessions(id, user_id, created_at, updated_at, aal)
+  select gen_random_uuid(), id, now(), now(), 'aal2'
+  from public.users where email in ('daniel.wright@brackenhouse.co.uk','ruth.findlay@brackenhouse.co.uk');
+
+do $$
+declare out text := '';
+  v_daniel  uuid := (select id from public.users where email='daniel.wright@brackenhouse.co.uk'); -- referrer, partner A
+  v_ruth    uuid := (select id from public.users where email='ruth.findlay@brackenhouse.co.uk');  -- referrer, partner C
+  v_maya    uuid := (select id from public.users where email='maya.holloway@brackenhouse.co.uk'); -- opndoor superadmin
+  v_eleanor uuid := (select id from public.users where email='eleanor.voss@brackenhouse.co.uk');  -- management, partner A (Daniel's)
+  v_greg    uuid := (select id from public.users where email='greg.mason@brackenhouse.co.uk');    -- management, partner B (other)
+  fn int;
+begin
+  -- AAL1 (management, Daniel's partner) -> MFA required
+  perform set_config('request.jwt.claims', json_build_object('sub',v_eleanor,'aal','aal1','role','authenticated')::text, true);
+  begin perform public.admin_reset_user_mfa(v_daniel); out:=out||'AAL1: ALLOWED(!); ';
+  exception when others then out:=out||(case when sqlerrm ilike '%MFA required%' then 'AAL1: blocked; ' else 'AAL1: '||sqlerrm||'; ' end); end;
+
+  -- management, DIFFERENT partner -> not permitted
+  perform set_config('request.jwt.claims', json_build_object('sub',v_greg,'aal','aal2','role','authenticated')::text, true);
+  begin perform public.admin_reset_user_mfa(v_daniel); out:=out||'cross-partner: ALLOWED(!); ';
+  exception when others then out:=out||(case when sqlerrm ilike '%not permitted%' then 'cross-partner: blocked; ' else 'cross-partner: '||sqlerrm||'; ' end); end;
+
+  -- management targeting an opndoor superadmin -> not permitted
+  perform set_config('request.jwt.claims', json_build_object('sub',v_eleanor,'aal','aal2','role','authenticated')::text, true);
+  begin perform public.admin_reset_user_mfa(v_maya); out:=out||'mgmt->admin: ALLOWED(!); ';
+  exception when others then out:=out||(case when sqlerrm ilike '%not permitted%' then 'mgmt->admin: blocked; ' else 'mgmt->admin: '||sqlerrm||'; ' end); end;
+
+  -- management, OWN partner, non-superadmin -> allowed; factor cleared
+  perform set_config('request.jwt.claims', json_build_object('sub',v_eleanor,'aal','aal2','role','authenticated')::text, true);
+  perform public.admin_reset_user_mfa(v_daniel);
+  select count(*) into fn from auth.mfa_factors where user_id=v_daniel;
+  out:=out||('mgmt own-partner: allowed, factors='||fn||'; ');
+
+  -- opndoor admin, ANY partner -> allowed; factor cleared
+  perform set_config('request.jwt.claims', json_build_object('sub',v_maya,'aal','aal2','role','authenticated')::text, true);
+  perform public.admin_reset_user_mfa(v_ruth);
+  select count(*) into fn from auth.mfa_factors where user_id=v_ruth;
+  out:=out||('admin any-partner: allowed, factors='||fn||'; ');
+
+  perform set_config('proof.result', out, true);
+end $$;
+
+select current_setting('proof.result', true) as mfa_reset_scope;
+rollback;
+```
+
+Output: `AAL1: blocked; cross-partner: blocked; mgmt->admin: blocked; mgmt
+own-partner: allowed, factors=0; admin any-partner: allowed, factors=0;`
+(verified live 2026-07-05).
+
 ---
 
 ## Data reachability matrix (the authoritative layer)
@@ -374,6 +442,7 @@ what actually enforce access.
 | `amend_tenancy_start(...)` | Invoked by the `amend-tenancy-start` Edge Function **as the caller** (user JWT). | AAL2 + ownership/role (`is_admin` / management-in-partner / referrer-owns) + `can_amend_tenancy_start` (C6). |
 | `send_deed_to_agent(...)` | Called **directly** by the client. | AAL2 + ownership/role + `can_send_deed`; **referrers may not pass a recipient or save a contact** (C6 recipient path), and the recipient email is format-validated. |
 | `set_application_status(...)` | Manual admin utility (real transitions run via service-role Stripe/PandaDoc RPCs). | AAL2 + **`is_admin()` only** — tightened this pass (migration `20260703143224`); management can no longer flip status by hand. |
+| `admin_reset_user_mfa(...)` | Called **directly** by the client (User management → Reset 2FA). Deletes the target's `auth.mfa_factors` + `auth.sessions` and audits `reset_mfa`. | AAL2 + **`is_admin()` OR management for a non-superadmin user at their own partner** — never cross-partner, never on opndoor staff. Proven live (C8). |
 
 No `authenticated` EXECUTE grants needed revoking: none of the above are
 service-role-only. The genuinely service-role-only RPCs already have `authenticated`
