@@ -12,7 +12,8 @@
    ===================================================================== */
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { addressLookupAvailable, ALL_PARTNERS, createReferral, lookupAddresses, type AddressOption } from '@/data';
+import { addressLookupAvailable, ALL_PARTNERS, createReferral, findActiveReferralByTenantProperty, lookupAddresses, type AddressOption, type DuplicateMatch } from '@/data';
+import { Modal } from '@/components/ui/Modal';
 import { TITLE_OPTIONS, validateReferral, type ReferralValues } from '@/lib/validation';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -28,7 +29,7 @@ import './NewApplication.css';
 const Req = () => <span className="req" aria-hidden="true">*</span>;
 
 const EMPTY: ReferralValues = {
-  title: 'Ms', first: '', last: '', dob: '', email: '', phone: '',
+  title: '', first: '', last: '', dob: '', email: '', phone: '',
   addr1: '', addr2: '', city: '', county: '', postcode: '',
   rent: '', tenancyStart: '', agency: '', branch: '',
 };
@@ -44,6 +45,7 @@ export function NewApplication() {
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [dupWarn, setDupWarn] = useState<DuplicateMatch | null>(null); // #5 duplicate soft warning
   // On-the-fly org creation extras from the AgentBranchPicker (contact capture
   // and, for an admin, the target partner the referral lands under).
   const [org, setOrg] = useState({
@@ -105,6 +107,15 @@ export function NewApplication() {
     setSubmitted(true);
     setFormError('');
     if (!isValid || busy) return;
+    // #5 Soft duplicate guard: warn (never block) if an active referral already
+    // exists for this tenant + property. Continue anyway proceeds unconditionally.
+    const dup = findActiveReferralByTenantProperty({ role, scope: partnerScope }, values.email.trim(), values.postcode.trim());
+    if (dup) { setDupWarn(dup); return; }
+    void doCreate();
+  }
+
+  async function doCreate() {
+    if (busy) return;
     setBusy(true);
     try {
       const res = await createReferral({
@@ -162,7 +173,8 @@ export function NewApplication() {
               <div className="form-grid">
                 <Field label={<>Title <Req /></>} htmlFor="t-title" style={{ maxWidth: 140 }} error={err('title')}>
                   <select id="t-title" name="title" value={values.title} onChange={(e) => set('title', e.target.value)} onBlur={() => markTouched('title')}>
-                    {TITLE_OPTIONS.map((t) => <option key={t}>{t}</option>)}
+                    <option value="" disabled>Select…</option>
+                    {TITLE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </Field>
                 <div className="field span-2" style={{ gridColumn: '2 / 3' }} />
@@ -296,6 +308,22 @@ export function NewApplication() {
           </Card>
         </aside>
       </div>
+
+      {/* #5 Duplicate-referral soft warning (never blocks). */}
+      <Modal
+        open={!!dupWarn}
+        onClose={() => setDupWarn(null)}
+        width={460}
+        title="Possible duplicate referral"
+        footer={<>
+          <Button variant="ghost" onClick={() => setDupWarn(null)}>Go back</Button>
+          <Button variant="primary" onClick={() => { setDupWarn(null); void doCreate(); }}>Continue anyway</Button>
+        </>}
+      >
+        <p style={{ fontSize: 13.5, color: 'var(--ink-soft)', lineHeight: 1.6, margin: 0 }}>
+          A referral for this tenant at this property already exists ({dupWarn?.ref}, {dupWarn?.statusLabel}). Continue anyway?
+        </p>
+      </Modal>
     </>
   );
 }

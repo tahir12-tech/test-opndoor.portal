@@ -11,7 +11,7 @@
    amendTenancyStartDb -> amend-tenancy-start (deed-state-aware reissue),
    sendDeedToAgent -> send_deed_to_agent RPC. Mock/test mode uses the seed.
    ===================================================================== */
-import type { ApplicationDetail, ApplicationSummary, DeedState, PartnerScope, Role, Status } from './types';
+import type { ApplicationDetail, ApplicationSummary, DeedState, PartnerScope, Role, Status, WithdrawReason } from './types';
 import { ALL_PARTNERS } from './types';
 import { AGENT_ADDR, APPLICATION_RECORDS as RECORDS_SEED, APPLICATIONS_LIST as LIST_SEED, type AppRecord } from './mock/applications';
 import { partnerName } from './partnersService';
@@ -65,6 +65,10 @@ export interface FullApp {
   deedSentAt: Date | null;
   /** When the tenant first opened the deed to sign (null = not yet viewed). */
   deedViewedAt: Date | null;
+  /** #2 True when withdrawn at Sent (terminal, pre-payment). */
+  withdrawn: boolean;
+  withdrawnReason: WithdrawReason | null;
+  withdrawnNote: string | null;
 }
 
 let FULL: FullApp[] = [];
@@ -91,7 +95,7 @@ export function isHydrated(): boolean {
   return HYDRATED;
 }
 
-const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued' };
+const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn' };
 
 export interface AppScopeOpts {
   role: Role;
@@ -104,7 +108,7 @@ export interface AppFilterOpts extends AppScopeOpts {
   /** 'refunded' and 'awaiting' (deed out for signature) are cross-cuts of Paid;
       'delivery-failed' is a cross-cut of Deed (issued but not delivered to an
       agent contact, #84). */
-  status?: Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed';
+  status?: Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn';
   agency?: string;
   branch?: string;
   q?: string;
@@ -119,17 +123,22 @@ function scopedSet(opts: AppScopeOpts): ApplicationSummary[] {
   return set;
 }
 
-export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number } {
+export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number; withdrawn: number } {
   const set = scopedSet(opts);
   // 'refunded' and 'awaiting' overlap 'paid' (both keep status Paid by design), so
   // they are counted in addition to paid, not instead of it. all = sent+paid+deed.
   // 'deliveryFailed' is a cross-cut of Deed (issued but no reachable agent contact).
-  const counts = { all: set.length, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0, deliveryFailed: 0 };
+  // #2 'withdrawn' is terminal and OUT of the funnel: it is not part of all/sent/
+  // paid/deed, only its own separate count (surfaced via its own chip).
+  const counts = { all: 0, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0, deliveryFailed: 0, withdrawn: 0 };
   set.forEach((r) => {
+    if (r.status === 'withdrawn') { counts.withdrawn++; return; }
+    counts.all++;
     counts[r.status]++;
     if (r.refunded) counts.refunded++;
     if (r.awaitingSignature) counts.awaiting++;
-    if (r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact) counts.deliveryFailed++;
+    // #93 Delivery-failure is an ops surface: never counted for referrers.
+    if (opts.role !== 'referrer' && r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact) counts.deliveryFailed++;
   });
   return counts;
 }
@@ -139,9 +148,12 @@ export function getApplications(opts: AppFilterOpts): ApplicationSummary[] {
   let rows = scopedSet(opts);
   if (opts.partner) rows = rows.filter((r) => r.partner === opts.partner);
   rows = rows.filter((r) => {
+    // #2 Withdrawn is terminal and out of the default/every-other view; it appears
+    // only when its own chip is selected.
+    if (r.status === 'withdrawn' && opts.status !== 'withdrawn') return false;
     if (opts.status === 'refunded') { if (!r.refunded) return false; }
     else if (opts.status === 'awaiting') { if (!r.awaitingSignature) return false; }
-    else if (opts.status === 'delivery-failed') { if (!(r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact)) return false; }
+    else if (opts.status === 'delivery-failed') { if (opts.role === 'referrer' || !(r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact)) return false; }
     else if (opts.status && opts.status !== 'all' && r.status !== opts.status) return false;
     if (opts.branch && r.branch !== opts.branch) return false;
     if (opts.agency && r.agency !== opts.agency) return false;
@@ -163,6 +175,27 @@ export function getApplications(opts: AppFilterOpts): ApplicationSummary[] {
     return chrono || a.ref.localeCompare(b.ref);
   });
   return rows;
+}
+
+export interface DuplicateMatch { ref: string; statusLabel: string; }
+
+/** #5 An ACTIVE (non-terminal) application matching the tenant email + property
+    postcode, for the soft duplicate warning on New Application. Scope-isolated, so
+    a referrer is only warned about their own referrals. Returns null (no false
+    warnings) in mock mode, where seed records carry no tenant email. */
+export function findActiveReferralByTenantProperty(opts: AppScopeOpts, email: string, postcode: string): DuplicateMatch | null {
+  const em = email.trim().toLowerCase();
+  const pc = postcode.replace(/\s+/g, '').toLowerCase();
+  if (!em || !pc) return null;
+  for (const s of scopedSet(opts)) {
+    if (s.refunded) continue; // refunded is a terminal cross-cut
+    if (s.status === 'withdrawn') continue; // #2 withdrawn is terminal: not an active duplicate
+    const rec = RECORDS.find((r) => r.ref === s.ref);
+    const rEm = (rec?.email ?? '').trim().toLowerCase();
+    const rPc = (rec?.postcode ?? '').replace(/\s+/g, '').toLowerCase();
+    if (rEm && rEm === em && rPc === pc) return { ref: s.ref, statusLabel: STATUS_LABEL[s.status] };
+  }
+  return null;
 }
 
 /** Distinct agency names within a scope (for the applications filter dropdown). */
@@ -250,7 +283,7 @@ export function findRecord(ref: string | null): AppRecord | null {
 function notFoundDetail(ref: string): ApplicationDetail {
   const now = new Date();
   return {
-    ref, status: 'sent', statusLabel: '', name: '', initials: '', title: '', role: '', fullName: '',
+    ref, status: 'sent', statusLabel: '', withdrawnReason: null, name: '', initials: '', title: '', role: '', fullName: '',
     dob: '', email: '', phone: '', addr1: '', addr2: '', city: '', county: '', postcode: '',
     agency: '', branch: '', partnerName: '', agentAddr: '', rent: '', rentNum: 0, referrer: '',
     tenancyStart: '', tenancyStartDate: now, sentAt: now, paidAt: null, deedAt: null,
@@ -321,6 +354,7 @@ export function getApplicationDetail(ref: string | null): ApplicationDetail {
     ref: r.ref,
     status: r.status,
     statusLabel: STATUS_LABEL[r.status],
+    withdrawnReason: r.withdrawnReason ?? null,
     name: r.name,
     initials: initials(r.name),
     title: r.title,
@@ -529,6 +563,29 @@ export function canSendDeed(role: Role, ownedByReferrer: boolean): boolean {
  */
 export function canReplaceDeed(role: Role): boolean {
   return role === 'superadmin' || role === 'management';
+}
+
+/**
+ * #2 Who may withdraw an application: only while it is at Sent (before payment).
+ * The owning Referrer may withdraw their own; Management any within their partner;
+ * opndoor admin any. Never once Paid — post-payment exits are the refund flow.
+ * The mark_withdrawn RPC enforces this rule independently.
+ */
+export function canWithdraw(role: Role, status: Status, ownedByReferrer: boolean): boolean {
+  if (status !== 'sent') return false;
+  return role === 'referrer' ? ownedByReferrer : true;
+}
+
+/**
+ * Withdraw a Sent application with a reason (and a note when reason is 'other').
+ * Persists via the mark_withdrawn RPC, which re-checks Sent-only + permission and
+ * writes the activity-log entry with the actor and reason. No-op in mock mode
+ * (the caller reflects the change in the demo view locally).
+ */
+export async function withdrawApplication(ref: string, reason: WithdrawReason, note: string): Promise<void> {
+  if (!SUPABASE_ENABLED) return;
+  const { error } = await sb().rpc('mark_withdrawn', { p_ref: ref, p_reason: reason, p_note: note.trim() || null });
+  if (error) throw new Error(error.message || 'Could not withdraw the application.');
 }
 
 export interface AmendResult {

@@ -77,6 +77,31 @@
   align-items: center;
 }
 
+/* #2 Withdrawn callout banner (terminal, pre-payment). */
+.rec-withdrawn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  background: var(--app-bg, #f7f7fb);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.rec-withdrawn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--ink-mute);
+  margin-top: 1px;
+}
+.rec-withdrawn b {
+  color: var(--ink);
+}
+
 /* timeline */
 .timeline {
   display: grid;

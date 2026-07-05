@@ -81,17 +81,23 @@ export interface FactorState {
   aal: string;
   hasVerifiedFactor: boolean;
   factorId: string | null;
+  /** #92 False when the factor read failed (no/expired session/token). Callers must
+      NOT treat this as "zero verified factors" and must not start enrolment. */
+  ok: boolean;
 }
 
 /** Assurance level + whether the user already has a verified TOTP factor. */
 export async function factorState(): Promise<FactorState> {
-  const { data: aalData } = await sb().auth.mfa.getAuthenticatorAssuranceLevel();
-  const { data: fData } = await sb().auth.mfa.listFactors();
+  const { data: aalData, error: aalErr } = await sb().auth.mfa.getAuthenticatorAssuranceLevel();
+  const { data: fData, error: listErr } = await sb().auth.mfa.listFactors();
   const verified = (fData?.totp ?? []).filter((f) => f.status === 'verified');
   return {
     aal: aalData?.currentLevel ?? 'aal1',
     hasVerifiedFactor: verified.length > 0,
     factorId: verified[0]?.id ?? null,
+    // #92 A read failure (missing/expired token) must be distinguishable from a
+    // genuine "no factors", so callers never start a bogus enrolment.
+    ok: !aalErr && !listErr,
   };
 }
 
@@ -125,7 +131,12 @@ export async function enrolTotp(): Promise<EnrolResult> {
   const friendlyName = `opndoor ${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const res = await sb().auth.mfa.enroll({ factorType: 'totp', friendlyName });
   if (res.error || !res.data) {
-    const detail = res.error?.message;
+    const detail = res.error?.message ?? '';
+    // #92/#73 Never surface a raw server-ism. A session/token error means the
+    // session lapsed, so ask the user to sign in again rather than echoing GoTrue.
+    if (/bearer|not authenticated|unauthorized|session|jwt|expired/i.test(detail)) {
+      return { ok: false, error: 'Your session has expired. Please sign in again.' };
+    }
     return { ok: false, error: detail ? `We could not start two-factor setup: ${detail}` : 'We could not start two-factor setup. Please try again, or ask your administrator to reset your 2FA.' };
   }
   return { ok: true, factorId: res.data.id, qr: res.data.totp.qr_code, secret: res.data.totp.secret, uri: res.data.totp.uri };

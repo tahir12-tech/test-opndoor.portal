@@ -12,7 +12,7 @@
    ===================================================================== */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, type PaymentInfo } from '@/data';
+import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, canWithdraw, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, withdrawApplication, type PaymentInfo, type WithdrawReason } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Card, CardBody, CardHead } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
-import { Pill } from '@/components/ui/Pill';
+import { Pill, type PillVariant } from '@/components/ui/Pill';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
 import { useToast } from '@/components/ui/Toast';
 import './ApplicationDetail.css';
@@ -52,7 +52,8 @@ interface Activity {
 const feedColor = (kind: string): string => {
   if (kind === 'payment_received') return 'var(--paid)';
   if (kind === 'deed_reminder_failed') return 'var(--warn, #c77d0a)';
-  if (kind === 'refunded' || kind === 'deed_error' || kind === 'payment_email_failed') return 'var(--danger, #d64545)';
+  if (kind === 'refunded' || kind === 'deed_error' || kind === 'payment_email_failed' || kind === 'payment_anomaly') return 'var(--danger, #d64545)';
+  if (kind === 'withdrawn') return 'var(--ink-mute, #7a7a8c)';
   if (kind === 'expiry_reminder') return 'var(--warn, #c77d0a)';
   if (kind === 'deed_issued' || kind === 'deed_signed' || kind === 'deed_reissued') return 'var(--deed)';
   if (kind === 'referral_created' || kind === 'payment_email_sent' || kind === 'deed_viewed' || kind === 'deed_archived') return 'var(--sent)';
@@ -83,6 +84,22 @@ const BUSINESS_LABEL: Record<string, string> = {
   // old -> new detail, which should show to every viewer (not be genericised).
   deed_archived: 'Signed deed archived before amendment',
   deed_reissued: 'Deed reissued for signing',
+  // #2 'withdrawn' intentionally omitted: its stored message carries the
+  // partner-safe reason, which should show verbatim to every viewer.
+};
+
+// #2 Withdrawal reasons, in the order shown in the picker.
+const WITHDRAW_REASONS: { value: WithdrawReason; label: string }[] = [
+  { value: 'another_guarantor', label: 'Tenant found another guarantor' },
+  { value: 'tenancy_fell_through', label: 'Tenancy fell through' },
+  { value: 'duplicate', label: 'Duplicate referral' },
+  { value: 'other', label: 'Other (add a note)' },
+];
+const REASON_LABEL: Record<WithdrawReason, string> = {
+  another_guarantor: 'tenant found another guarantor',
+  tenancy_fell_through: 'tenancy fell through',
+  duplicate: 'duplicate referral',
+  other: 'other',
 };
 
 export function ApplicationDetail() {
@@ -114,6 +131,14 @@ export function ApplicationDetail() {
   const [resendBusy, setResendBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [deedBusy, setDeedBusy] = useState(false);
+  // #2 Withdraw (Sent, pre-payment only)
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [wReason, setWReason] = useState<WithdrawReason | ''>('');
+  const [wNote, setWNote] = useState('');
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  // Optimistic local reflection: the memoised detail (d) is not re-fetched, so a
+  // successful withdrawal is mirrored here to flip the status/actions immediately.
+  const [withdrewLocal, setWithdrewLocal] = useState<WithdrawReason | null>(null);
 
   const loadPayment = useCallback(async () => {
     if (!SUPABASE_ENABLED) return null;
@@ -167,6 +192,29 @@ export function ApplicationDetail() {
     setDeedBusy(false);
     if (r.ok) { toast(r.message || 'Reminder sent to the tenant.'); void loadPayment(); }
     else toast(r.error || 'Could not send the deed.');
+  };
+
+  const doWithdraw = async () => {
+    if (!wReason) return;
+    if (wReason === 'other' && !wNote.trim()) { toast('Please add a note explaining the reason.'); return; }
+    setWithdrawBusy(true);
+    try {
+      await withdrawApplication(d.ref, wReason, wNote);
+      const note = wNote.trim();
+      setWithdrewLocal(wReason);
+      setWithdrawOpen(false);
+      // Reflect immediately in the activity feed (partner-safe: the reason shows to all).
+      setExtraActivity((prev) => [
+        { color: 'var(--ink-mute, #7a7a8c)', text: `Application withdrawn (${REASON_LABEL[wReason]})${note ? `: ${note}` : ''}.`, time: `${fmtShort(NOW)} · ${role === 'referrer' ? d.referrer : 'You'}` },
+        ...prev,
+      ]);
+      toast('Application withdrawn.');
+      void loadPayment();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not withdraw the application.');
+    } finally {
+      setWithdrawBusy(false);
+    }
   };
 
 
@@ -243,10 +291,28 @@ export function ApplicationDetail() {
 
   // ---- payment display (Stripe, real mode) ----
   const pi = paymentInfo;
+  // #2 A withdrawn application collects no payment: it is neither Paid nor Awaiting.
+  // (Its status is 'withdrawn', which would otherwise satisfy `pi.status !== 'sent'`.)
+  // Also honour the optimistic local withdrawal (withdrewLocal), so the card never
+  // renders "Awaiting payment" with a live Resend button in the window before the
+  // payment info reloads.
+  const payWithdrawn = pi?.status === 'withdrawn' || withdrewLocal != null;
   const payRefunded = pi?.paymentState === 'refunded';
-  const payPaid = !!pi && !payRefunded && (pi.paymentState === 'paid' || pi.status !== 'sent');
-  const payAwaiting = !!pi && !payPaid && !payRefunded;
-  const lastEmailLog = pi?.log.find((l) => l.kind.startsWith('payment_email'));
+  const payPaid = !!pi && !payRefunded && !payWithdrawn && (pi.paymentState === 'paid' || (pi.status !== 'sent' && pi.status !== 'withdrawn'));
+  const payAwaiting = !!pi && !payPaid && !payRefunded && !payWithdrawn;
+  // #94 The card status line must tier like the feed: non-admins never see the
+  // internal "Redirected to ... (test mode)" row (filtered here), and the business
+  // message (which names the actor) is rendered as its partner-safe label below.
+  const lastEmailLog = (isAdmin ? pi?.log : pi?.log?.filter((l) => l.visibility !== 'internal'))?.find((l) => l.kind.startsWith('payment_email'));
+
+  // ---- #2 withdrawal state ----
+  const owned = d.owner === 1;
+  const isWithdrawn = d.status === 'withdrawn' || withdrewLocal != null;
+  const withdrawnReason = withdrewLocal ?? d.withdrawnReason;
+  // Withdraw is offered only at Sent, before payment, to the owner / management / admin.
+  const showWithdraw = canWithdraw(role, d.status, owned) && !isWithdrawn;
+  const pillVariant: PillVariant = isWithdrawn ? 'muted' : (d.status === 'withdrawn' ? 'muted' : d.status);
+  const statusLabel = isWithdrawn ? 'Withdrawn' : d.statusLabel;
 
   // ---- amend permission + context ----
   const PAYMENT = d.paymentDate;
@@ -256,7 +322,8 @@ export function ApplicationDetail() {
   // re-notification. It needs an explicit consequence confirmation before saving.
   const executed = d.status === 'deed' || paymentInfo?.deedState === 'executed';
   // Who may amend: Sent -> any viewing role (Referrer only their own); Paid/Deed -> Management + opndoor admin.
-  const canAmend = canAmendTenancyStart(role, d.status, d.owner === 1, paymentInfo?.deedState ?? null);
+  // A withdrawn application is terminal: no amend (or any other action) is offered.
+  const canAmend = !isWithdrawn && canAmendTenancyStart(role, d.status, owned, paymentInfo?.deedState ?? null);
 
   // ---- amend validation ----
   // Any valid calendar date is allowed. We only require a real dd/mm/yyyy date
@@ -415,7 +482,7 @@ export function ApplicationDetail() {
           <div>
             <div className="rec-head__name">{d.name}</div>
             <div className="rec-head__meta">
-              <Pill variant={d.status}>{d.statusLabel}</Pill>
+              <Pill variant={pillVariant}>{statusLabel}</Pill>
               <span>·</span><span>Reference {d.ref}</span>
               <span>·</span><span>{d.branch} · {d.agency}</span>
               {role !== 'referrer' && d.partnerName && <><span>·</span><span>{d.partnerName}</span></>}
@@ -424,8 +491,19 @@ export function ApplicationDetail() {
         </div>
         <div className="rec-head__actions">
           {isDeed && <Button variant="dark" size="sm" onClick={doDownloadDeed}><Icon name="download" /> Download deed</Button>}
+          {showWithdraw && <Button variant="ghost" size="sm" onClick={() => { setWReason(''); setWNote(''); setWithdrawOpen(true); }}><Icon name="ban" /> Withdraw</Button>}
         </div>
       </div>
+
+      {isWithdrawn && (
+        <div className="rec-withdrawn">
+          <Icon name="ban" strokeWidth={2.2} />
+          <div>
+            <b>This application was withdrawn{withdrawnReason ? ` (${REASON_LABEL[withdrawnReason]})` : ''}.</b>{' '}
+            It is excluded from conversion figures and Leagues, and receives no further payment reminders.
+          </div>
+        </div>
+      )}
 
       <Card style={{ marginBottom: 18 }}>
         <CardHead title="Status timeline" sub="Sent to Paid to Deed Issued" />
@@ -490,6 +568,12 @@ export function ApplicationDetail() {
             <Card>
               <CardHead title="Payment" actions={stripeTestMode() ? <span className="pay-badge">Test mode</span> : undefined} />
               <CardBody style={{ paddingTop: 6, paddingBottom: 12 }}>
+                {payWithdrawn && (
+                  <>
+                    <div className="pay-state pay-state--refunded"><span className="pay-dot" />Withdrawn</div>
+                    <div className="pay-note">This application was withdrawn before payment, so no guarantor fee was collected. It is excluded from conversion figures and receives no payment reminders.</div>
+                  </>
+                )}
                 {payPaid && (
                   <>
                     <div className="pay-state pay-state--paid"><span className="pay-dot" />Paid</div>
@@ -537,7 +621,7 @@ export function ApplicationDetail() {
                       <div className={`pay-note${lastEmailLog.kind === 'payment_email_failed' ? ' pay-note--warn' : ''}`}>
                         {lastEmailLog.kind === 'payment_email_failed' && !isAdmin
                           ? 'Payment email could not be sent. Use the copy link above to share it with the tenant; opndoor has been notified.'
-                          : lastEmailLog.message}
+                          : isAdmin ? lastEmailLog.message : (BUSINESS_LABEL[lastEmailLog.kind] ?? lastEmailLog.message)}
                       </div>
                     )}
                   </>
@@ -669,6 +753,33 @@ export function ApplicationDetail() {
         <div className={`amend-msg${amendTone === 'ok' ? ' amend-msg--ok' : amendTone === 'err' ? ' amend-msg--err' : ''}`} style={amendTone === 'neutral' ? { color: 'var(--ink-mute)' } : undefined}>
           <Icon name={amendTone === 'err' ? 'info' : 'check'} strokeWidth={2.4} style={amendTone === 'neutral' ? { color: 'var(--ink-mute)' } : amendTone === 'ok' ? { color: 'var(--deed)' } : undefined} />
           {amendText}
+        </div>
+      </Modal>
+
+      {/* #2 WITHDRAW APPLICATION (Sent, pre-payment only) */}
+      <Modal
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        width={460}
+        title="Withdraw application"
+        sub="Withdrawing marks this referral as closed before payment. It is excluded from conversion figures and Leagues, and receives no further payment reminders. This cannot be undone."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setWithdrawOpen(false)} disabled={withdrawBusy}>Cancel</Button>
+            <Button variant="primary" className="btn--danger" onClick={() => void doWithdraw()} disabled={withdrawBusy || !wReason || (wReason === 'other' && !wNote.trim())}>{withdrawBusy ? 'Withdrawing…' : 'Withdraw application'}</Button>
+          </>
+        }
+      >
+        <div className="field">
+          <label htmlFor="withdraw-reason">Reason</label>
+          <select id="withdraw-reason" value={wReason} onChange={(e) => setWReason(e.target.value as WithdrawReason)}>
+            <option value="" disabled>Select a reason…</option>
+            {WITHDRAW_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="withdraw-note">Note{wReason === 'other' ? '' : ' (optional)'}</label>
+          <textarea id="withdraw-note" rows={3} placeholder={wReason === 'other' ? 'Explain the reason for withdrawing' : 'Add any context (optional)'} value={wNote} onChange={(e) => setWNote(e.target.value)} />
         </div>
       </Modal>
 

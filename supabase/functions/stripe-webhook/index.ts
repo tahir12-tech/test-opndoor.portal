@@ -98,6 +98,9 @@ Deno.serve(async (req) => {
     // payment_intent.payment_failed / checkout.session.expired: acknowledged, no status change.
     return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
   } catch (e) {
-    return new Response(`Handler error: ${e instanceof Error ? e.message : String(e)}`, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    // #3 A webhook processing failure alerts ops (deduped to one per hour).
+    try { await service.rpc("report_ops_incident", { p_type: "webhook_error", p_detail: `stripe-webhook ${event?.type ?? "?"}: ${msg}` }); } catch { /* never mask the original failure */ }
+    return new Response(`Handler error: ${msg}`, { status: 500 });
   }
 });

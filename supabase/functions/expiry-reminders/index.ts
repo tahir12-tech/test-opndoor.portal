@@ -144,6 +144,13 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, test, date: pToday, fired: newReminders.length, emailed, emailFailed });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    const msg = e instanceof Error ? e.message : "Unexpected error.";
+    // #3 A total cron failure (a crash before it could log anything) still alerts
+    // ops via report_ops_incident; deduped to one per hour in the database.
+    try {
+      const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await svc.rpc("report_ops_incident", { p_type: "cron_error:expiry-reminders", p_detail: `expiry-reminders: ${msg}` });
+    } catch { /* never mask the original failure */ }
+    return json({ ok: false, error: msg }, 500);
   }
 });

@@ -65,6 +65,7 @@ export function PartnerManagement() {
   const [agentRate, setAgentRate] = useState('10');
   const [lbMode, setLbMode] = useState<LeaderboardMode>('full'); // #88 referrer leaderboard visibility
   const [audit, setAudit] = useState<PartnerAuditEntry[]>([]);
+  const [showAllAudit, setShowAllAudit] = useState(false); // #89 cap Recent changes at 5
   const [saving, setSaving] = useState(false);
   // Pending rate change awaiting confirmation (current -> new), or null.
   const [confirm, setConfirm] = useState<{ input: PartnerSettingsInput; changes: RateChange[] } | null>(null);
@@ -94,6 +95,7 @@ export function PartnerManagement() {
     setLbMode(getReferrerLeaderboardMode(id));
     setConfirm(null);
     setAudit([]);
+    setShowAllAudit(false);
     getPartnerAudit(id).then(setAudit).catch(() => setAudit([]));
     setOpen(true);
   }
@@ -279,15 +281,22 @@ export function PartnerManagement() {
           <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16, marginTop: 16 }}>
             <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Recent changes</div>
             {audit.length > 0 ? (
-              <ul className="pm-audit">
-                {audit.map((e, i) => (
-                  <li key={i} className="pm-audit__row">
-                    <span className="pm-audit__field">{auditField(e.field)}</span>
-                    <span className="pm-audit__delta">{auditValue(e.field, e.oldValue)} → <b>{auditValue(e.field, e.newValue)}</b></span>
-                    <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="pm-audit">
+                  {(showAllAudit ? audit : audit.slice(0, 5)).map((e, i) => (
+                    <li key={i} className="pm-audit__row">
+                      <span className="pm-audit__field">{auditField(e.field)}</span>
+                      <span className="pm-audit__delta">{auditValue(e.field, e.oldValue)} → <b>{auditValue(e.field, e.newValue)}</b></span>
+                      <span className="pm-audit__meta">{e.actor} · {dmy(e.at)}</span>
+                    </li>
+                  ))}
+                </ul>
+                {audit.length > 5 && (
+                  <button type="button" className="pm-audit__more" onClick={() => setShowAllAudit((v) => !v)}>
+                    {showAllAudit ? 'Show fewer' : `View all changes (${audit.length})`}
+                  </button>
+                )}
+              </>
             ) : (
               <p style={{ fontSize: 13, color: 'var(--ink-mute)', margin: 0 }}>No changes recorded yet. Edits to this partner's name, status, go-live date or commission rates will appear here.</p>
             )}

@@ -113,7 +113,8 @@ export function Dashboard() {
   const naAwaiting = d.live && d.awaiting > 0;
   const naStuckSent = d.stuckSent !== '0';
   const naSettlements = d.live && canSeeSettlements && (partnerDue > 0 || agentDue > 0);
-  const naNoContact = d.live && d.deedsNoContact > 0;
+  // #93 Deed-delivery failure is ops furniture: management + opndoor admin only.
+  const naNoContact = d.live && canSeeSettlements && d.deedsNoContact > 0;
   const naCorrections = canSeeSettlements && corrections > 0;
   const naLapsing = d.live && canSeeSettlements && d.lapsing14 > 0;
   const hasNeedsAttention = naAwaiting || naStuckSent || naSettlements || naNoContact || naCorrections || naLapsing;

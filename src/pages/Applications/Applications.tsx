@@ -25,7 +25,7 @@ import { Pager } from '@/components/ui/Pager';
 import './Applications.css';
 
 const PAGE_SIZE = 20;
-const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued' };
+const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtDate(iso: string): string {
   const d = new Date(iso);
@@ -63,11 +63,12 @@ export function Applications() {
 
   // Initial filters from the drill-through URL (?agency= / ?branch= / ?status= / ?deed=).
   // 'refunded' and 'awaiting' are status chips that cross-cut Paid (status stays Paid).
-  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed'>(() => {
+  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn'>(() => {
     if (params.get('deed') === 'awaiting') return 'awaiting';
-    if (params.get('deed') === 'delivery-failed') return 'delivery-failed';
+    // #93 delivery-failed is management + opndoor admin only.
+    if (role !== 'referrer' && params.get('deed') === 'delivery-failed') return 'delivery-failed';
     const s = params.get('status');
-    return s === 'sent' || s === 'paid' || s === 'deed' || s === 'refunded' ? s : 'all';
+    return s === 'sent' || s === 'paid' || s === 'deed' || s === 'refunded' || s === 'withdrawn' ? s : 'all';
   });
   const [q, setQ] = useState('');
   const [sort, setSort] = useState('Newest first');
@@ -124,9 +125,15 @@ export function Applications() {
       ? [{ id: 'awaiting', label: <Pill variant="warn" style={{ background: 'none', padding: 0 }}>Awaiting signature</Pill>, count: counts.awaiting }]
       : []),
     // Delivery failed: deed issued but not delivered to an agent contact (#84).
-    // Shown when there is anything to resend, or when the filter is deep-linked.
-    ...(counts.deliveryFailed > 0 || status === 'delivery-failed'
+    // Ops surface, management + opndoor admin only (#93). Shown when there is
+    // anything to resend, or when the filter is deep-linked.
+    ...(role !== 'referrer' && (counts.deliveryFailed > 0 || status === 'delivery-failed')
       ? [{ id: 'delivery-failed', label: <Pill variant="warn" style={{ background: 'none', padding: 0 }}>Delivery failed</Pill>, count: counts.deliveryFailed }]
+      : []),
+    // #2 Withdrawn: terminal, out of the funnel (excluded from All/Sent). Shown when
+    // any exist or when deep-linked, so it never crowds the tabs when unused.
+    ...(counts.withdrawn > 0 || status === 'withdrawn'
+      ? [{ id: 'withdrawn', label: <Pill variant="muted" style={{ background: 'none', padding: 0 }}>Withdrawn</Pill>, count: counts.withdrawn }]
       : []),
   ];
 
@@ -168,7 +175,7 @@ export function Applications() {
       )}
 
       <div className="toolbar">
-        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed')} />
+        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn')} />
       </div>
 
       <div className="toolbar">
@@ -232,7 +239,7 @@ export function Applications() {
                   <td>{r.prop}</td>
                   <td>{r.branch}<div className="dt__sub">{r.agency}</div></td>
                   <td style={{ textAlign: 'right' }}><span className="dt__rent">£{r.rent.toLocaleString('en-GB')}</span><div className="dt__sub">per month</div></td>
-                  <td><span className="status-cell"><Pill variant={r.status as PillVariant}>{STATUS_LABEL[r.status]}</Pill>{r.refunded && <span className="refund-tag" title="Guarantor fee refunded">Refunded</span>}</span></td>
+                  <td><span className="status-cell"><Pill variant={r.status === 'withdrawn' ? 'muted' : (r.status as PillVariant)}>{STATUS_LABEL[r.status]}</Pill>{r.refunded && <span className="refund-tag" title="Guarantor fee refunded">Refunded</span>}</span></td>
                   <td className="dt__num soft">{fmtDate(r.date)}</td>
                   <td><Icon name="chevronRight" className="dt__chev" size={16} /></td>
                 </tr>

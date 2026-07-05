@@ -78,6 +78,16 @@
   color: var(--ink-mute);
   font-size: 11.5px;
 }
+/* #89 View-all toggle for the capped Recent changes list. */
+.pm-audit__more {
+  all: unset;
+  cursor: pointer;
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--heliotrope-deep);
+}
+.pm-audit__more:hover { text-decoration: underline; }
 
 /* Commission-change confirmation (current -> new) */
 .pm-confirm {

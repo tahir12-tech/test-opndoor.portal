@@ -42,6 +42,10 @@ const MOCK_QUEUE: ReconRow[] = [
   { id: 'agency:m2', entityId: 'm2', type: 'agency', name: 'Marylebone and Co.', parent: null, by: 'Aisha Khan', when: '17/06/2026 · 09:48', refs: 2, match: 'Marylebone & Co', matchExact: false },
   { id: 'branch:m3', entityId: 'm3', type: 'branch', name: 'Wandsworth', parent: 'Hartwell Estates', by: 'Marcus Lin', when: '16/06/2026 · 16:05', refs: 3, match: null, matchExact: false },
   { id: 'agency:m4', entityId: 'm4', type: 'agency', name: 'Camden Town Lettings', parent: null, by: 'Daniel Wright', when: '13/06/2026 · 10:12', refs: 1, match: null, matchExact: false },
+  // #96 A single-office fly-created agency plus its auto "[Agency], Head office"
+  // branch: confirming the agency should sweep this branch in the same action.
+  { id: 'agency:m5', entityId: 'm5', type: 'agency', name: 'Bracken & Vale', parent: null, by: 'Priya Nair', when: '12/06/2026 · 11:30', refs: 1, match: null, matchExact: false },
+  { id: 'branch:m6', entityId: 'm6', type: 'branch', name: 'Bracken & Vale, Head office', parent: 'Bracken & Vale', by: 'Priya Nair', when: '12/06/2026 · 11:30', refs: 1, match: null, matchExact: false },
 ];
 
 /** The pending-review queue (admin only). Async: live RPC or the mock queue. */
@@ -74,7 +78,15 @@ export async function confirmReconEntity(type: 'agency' | 'branch', entityId: st
     return;
   }
   const i = MOCK_QUEUE.findIndex((r) => r.entityId === entityId);
-  if (i >= 0) MOCK_QUEUE.splice(i, 1);
+  if (i < 0) return;
+  const row = MOCK_QUEUE[i];
+  MOCK_QUEUE.splice(i, 1);
+  // #96 Confirming an agency also sweeps its auto-created "[Agency], Head office" branch.
+  if (row.type === 'agency') {
+    const ho = `${row.name}, Head office`.toLowerCase();
+    const bi = MOCK_QUEUE.findIndex((r) => r.type === 'branch' && r.parent === row.name && r.name.toLowerCase() === ho);
+    if (bi >= 0) MOCK_QUEUE.splice(bi, 1);
+  }
 }
 
 /** Pending count for the sidebar badge. Derived synchronously from the hydrated

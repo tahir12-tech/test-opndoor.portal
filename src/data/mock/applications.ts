@@ -7,7 +7,7 @@
      used by the detail builder to derive dates, contact details and
      guarantee info deterministically.
    ===================================================================== */
-import type { ApplicationSummary, Status } from '../types';
+import type { ApplicationSummary, Status, WithdrawReason } from '../types';
 
 export interface AppRecord {
   ref: string;
@@ -23,6 +23,8 @@ export interface AppRecord {
   date: string;
   referrer: string;
   owner: number;
+  /** #2 Withdrawal reason (present only on a withdrawn record). */
+  withdrawnReason?: WithdrawReason | null;
   // Real tenant/property/timeline values from Supabase, present in live mode only.
   // Mock seed records omit these and the detail builder synthesises deterministic
   // stand-ins instead; their presence is what makes getApplicationDetail show the
@@ -46,6 +48,7 @@ export const APPLICATION_RECORDS: AppRecord[] = [
   { ref: 'GR-20418', name: 'Amelia Hartley', title: 'Ms', role: 'Postgraduate student', addr1: 'Flat 4, 18 Onslow Gardens', postcode: 'SW7 3LA', branch: 'South Kensington', agency: 'Foxglove Residential', rent: 2450, status: 'deed', date: '2026-06-02', referrer: 'Priya Nair', owner: 1 },
   { ref: 'GR-20455', name: 'Chen Wei', title: 'Mr', role: 'Software engineer', addr1: '22 Cale Street', postcode: 'SW3 3QU', branch: 'Chelsea', agency: 'Foxglove Residential', rent: 2200, status: 'paid', date: '2026-06-09', referrer: 'Priya Nair', owner: 1 },
   { ref: 'GR-20489', name: 'Mohammed Al-Rashid', title: 'Mr', role: 'Doctoral researcher', addr1: 'Studio 7, 5 Bina Gardens', postcode: 'SW5 0LA', branch: 'South Kensington', agency: 'Foxglove Residential', rent: 1850, status: 'sent', date: '2026-06-14', referrer: 'Priya Nair', owner: 1 },
+  { ref: 'GR-20493', name: 'Elena Novak', title: 'Ms', role: 'Graphic designer', addr1: '9 Sydney Street', postcode: 'SW3 6PU', branch: 'Chelsea', agency: 'Foxglove Residential', rent: 2050, status: 'withdrawn', date: '2026-06-15', referrer: 'Priya Nair', owner: 1, withdrawnReason: 'another_guarantor' },
   { ref: 'GR-20322', name: 'Sofia Almeida', title: 'Ms', role: 'Marketing manager', addr1: '41 Marylebone High Street', postcode: 'W1U 5HR', branch: 'Marylebone', agency: 'Marylebone & Co', rent: 2800, status: 'deed', date: '2026-05-28', referrer: 'Daniel Wright', owner: 0 },
   { ref: 'GR-20471', name: 'Tariq Hassan', title: 'Mr', role: 'Consultant', addr1: '12 Charlotte Street', postcode: 'W1T 2LP', branch: 'Fitzrovia', agency: 'Marylebone & Co', rent: 2350, status: 'paid', date: '2026-06-11', referrer: 'Aisha Khan', owner: 0 },
   { ref: 'GR-20502', name: 'Grace Okonkwo', title: 'Ms', role: 'Nurse', addr1: '88 Northcote Road', postcode: 'SW11 6QW', branch: 'Clapham', agency: 'Hartwell Estates', rent: 1950, status: 'sent', date: '2026-06-16', referrer: 'Marcus Lin', owner: 0 },
@@ -77,6 +80,9 @@ export const APPLICATIONS_LIST: ApplicationSummary[] = [
   { ref: 'GR-20418', tenant: 'Amelia Hartley', prop: 'Flat 4, 18 Onslow Gardens, SW7', branch: 'South Kensington', agency: 'Foxglove Residential', ben: 'Onslow Estates Ltd', rent: 2450, status: 'deed', date: '2026-06-02', owner: 1, partner: 'rightmove' },
   { ref: 'GR-20455', tenant: 'Chen Wei', prop: '22 Cale Street, SW3', branch: 'Chelsea', agency: 'Foxglove Residential', ben: 'K&C Property Holdings', rent: 2200, status: 'paid', date: '2026-06-09', owner: 1, partner: 'rightmove' },
   { ref: 'GR-20489', tenant: 'Mohammed Al-Rashid', prop: 'Studio 7, 5 Bina Gardens, SW5', branch: 'South Kensington', agency: 'Foxglove Residential', ben: 'Bina Gardens Mgmt', rent: 1850, status: 'sent', date: '2026-06-14', owner: 1, partner: 'rightmove' },
+  // #2 A withdrawn (pre-payment) referral: excluded from All/Sent and every
+  // conversion figure, shown only under its own Withdrawn chip.
+  { ref: 'GR-20493', tenant: 'Elena Novak', prop: '9 Sydney Street, SW3', branch: 'Chelsea', agency: 'Foxglove Residential', ben: 'Sydney Street Estates', rent: 2050, status: 'withdrawn', date: '2026-06-15', owner: 1, partner: 'rightmove', withdrawn: true },
   { ref: 'GR-20322', tenant: 'Sofia Almeida', prop: '41 Marylebone High Street, W1U', branch: 'Marylebone', agency: 'Marylebone & Co', ben: 'Howard de Walden Est.', rent: 2800, status: 'deed', date: '2026-05-28', owner: 0, partner: 'rightmove' },
   { ref: 'GR-20471', tenant: 'Tariq Hassan', prop: '12 Charlotte Street, W1T', branch: 'Fitzrovia', agency: 'Marylebone & Co', ben: 'Fitzroy Holdings Ltd', rent: 2350, status: 'paid', date: '2026-06-11', owner: 0, partner: 'rightmove' },
   { ref: 'GR-20502', tenant: 'Grace Okonkwo', prop: '88 Northcote Road, SW11', branch: 'Clapham', agency: 'Hartwell Estates', ben: 'Northcote Lettings Ltd', rent: 1950, status: 'sent', date: '2026-06-16', owner: 0, partner: 'rightmove' },

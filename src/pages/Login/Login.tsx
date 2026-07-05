@@ -50,6 +50,10 @@ export function Login() {
   // Move from a valid AAL1 session to the correct TOTP step (enrol or verify).
   async function advanceToMfa() {
     const fs = await authService.factorState();
+    // #92 If the factor read failed (missing/expired token, e.g. the reset-then-
+    // sign-in handoff transiently landing here) do NOT start an unauthenticated
+    // enrolment; ask the user to sign in again.
+    if (!fs.ok) { setError('Your session has expired. Please sign in again.'); return; }
     if (fs.hasVerifiedFactor && fs.factorId) {
       setFactorId(fs.factorId);
       setStep('verify');

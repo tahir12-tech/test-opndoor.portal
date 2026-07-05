@@ -97,6 +97,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
         'prop_addr1, prop_addr2, prop_city, prop_county, prop_postcode, ' +
         'monthly_rent, partner_rate, agent_rate, status, beneficiary, tenancy_start, sent_at, paid_at, deed_issued_at, expiry_date, ' +
         'payment_state, refunded_at, refunded_amount, paid_amount, refund_after_start, ' +
+        'withdrawn_at, withdrawn_reason, withdrawn_note, ' +
         'deed_state, deed_sent_at, deed_viewed_at, expiry_reminders_sent, ' +
         'referrer_id, branch_id, agency_id, partner_id, ' +
         'branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name, role), partner:partners(slug)',
@@ -232,6 +233,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     owner: ownerFlag(a),
     partner: slugOfApp(a),
     refunded: a.payment_state === 'refunded',
+    withdrawn: a.status === 'withdrawn',
     awaitingSignature: a.deed_state === 'awaiting_tenant',
   }));
 
@@ -269,6 +271,9 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     deedState: a.deed_state ?? null,
     deedSentAt: toDate(a.deed_sent_at),
     deedViewedAt: toDate(a.deed_viewed_at),
+    withdrawn: a.status === 'withdrawn',
+    withdrawnReason: (a.withdrawn_reason ?? null) as FullApp['withdrawnReason'],
+    withdrawnNote: a.withdrawn_note ?? null,
   }));
 
   const recordsOut: AppRecord[] = apps.map((a) => ({
@@ -285,6 +290,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     date: eventDate(a),
     referrer: emb(a.referrer)?.full_name ?? '',
     owner: ownerFlag(a),
+    withdrawnReason: (a.withdrawn_reason ?? null) as AppRecord['withdrawnReason'],
     // Real values so the detail view shows exactly what was entered, and when.
     firstName: a.tenant_first_name ?? null,
     lastName: a.tenant_last_name ?? null,

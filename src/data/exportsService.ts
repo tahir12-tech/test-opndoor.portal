@@ -583,8 +583,11 @@ function generateApplications(period: Period, basis: ExportBasis): SynthApp[] {
 /** Application export from live records (Supabase mode), with refund columns. */
 function buildRealApplicationDoc(role: Role, period: Period, basis: ExportBasis, meta: { label: string; recon: string; hint: string }): BrandedExport {
   const [start, end] = realPeriodRange(period);
-  const apps = scopeFull(allFull(), role, scopeFor(role)).filter((a) => basisInPeriod(a, basis, start, end));
-  const STATUS: Record<FullApp['status'], string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued' };
+  // #2 Withdrawn is terminal and out of the funnel: exclude it so the referred/
+  // activity bases reconcile with the performance export (whose Sent excludes
+  // withdrawn) and a withdrawn row is never rendered as "Awaiting payment".
+  const apps = scopeFull(allFull(), role, scopeFor(role)).filter((a) => !a.withdrawn && basisInPeriod(a, basis, start, end));
+  const STATUS: Record<FullApp['status'], string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn' };
 
   const columns: Column[] = [
     { header: 'Partner', type: 'text' },

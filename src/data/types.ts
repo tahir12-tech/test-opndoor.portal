@@ -13,7 +13,8 @@ export type PartnerScope = string;
 export const ALL_PARTNERS = 'all';
 
 /** Application lifecycle. */
-export type Status = 'sent' | 'paid' | 'deed';
+export type Status = 'sent' | 'paid' | 'deed' | 'withdrawn';
+export type WithdrawReason = 'another_guarantor' | 'tenancy_fell_through' | 'duplicate' | 'other';
 /** Deed sub-state while Paid (DB-enforced set), or null before a deed exists. */
 export type DeedState = 'awaiting_tenant' | 'executed' | 'declined' | 'voided' | 'error';
 /** Guarantor-fee payment state (DB-enforced set). */
@@ -132,6 +133,8 @@ export interface ApplicationSummary {
   partner: string;
   /** True when the guarantor fee was refunded (status stays Paid, by design). */
   refunded?: boolean;
+  /** #2 True when the application was withdrawn at Sent (terminal, pre-payment). */
+  withdrawn?: boolean;
   /** True when the deed is out for signature (deed_state 'awaiting_tenant'); a
       sub-state of Paid, filterable from the list and the dashboard. */
   awaitingSignature?: boolean;
@@ -142,6 +145,8 @@ export interface ApplicationDetail {
   ref: string;
   status: Status;
   statusLabel: string;
+  /** #2 Withdrawal reason when status is 'withdrawn' (else null). */
+  withdrawnReason: WithdrawReason | null;
   name: string;
   initials: string;
   title: string;
@@ -224,7 +229,7 @@ export interface Period {
 }
 
 /* ---------- Activity feed + upcoming expiries ---------- */
-export type ActivityKind = 'sent' | 'paid' | 'deed';
+export type ActivityKind = 'sent' | 'paid' | 'deed' | 'withdrawn';
 export interface ActivityEntry {
   id: string;
   kind: ActivityKind;

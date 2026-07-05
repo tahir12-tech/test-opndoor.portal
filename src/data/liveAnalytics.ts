@@ -80,7 +80,10 @@ export interface LiveAgg {
 /** Aggregate the scoped set for a period (event-in-period money/counts + current-state ops). */
 export function liveAggregate(role: Role, scope: PartnerScope, period: Period): LiveAgg {
   const [start, end] = periodRange(period);
-  const set = scopeFull(allFull(), role, scope);
+  // #2 Withdrawn is terminal and pre-payment: it leaves the funnel entirely, so
+  // it is excluded from every count, conversion denominator, ops metric and
+  // average here (never inside Sent, never in stuck-at-Sent).
+  const set = scopeFull(allFull(), role, scope).filter((x) => !x.withdrawn);
   const a: LiveAgg = {
     sent: 0, paid: 0, deed: 0, feesGross: 0, refundValue: 0, refundCount: 0, feesNet: 0,
     guaranteed: 0, partnerCommNet: 0, agentCommNet: 0, partnerCommExcl: 0, agentCommExcl: 0,
@@ -217,6 +220,9 @@ function groupRows(set: FullApp[], key: GroupKey, start: Date, end: Date): Leagu
     return g;
   };
   for (const app of set) {
+    // #2 Withdrawn is terminal and excluded from every league/volume figure
+    // (refs, conversion, fees), matching liveAggregate's funnel exclusion.
+    if (app.withdrawn) continue;
     const k = keyOf(app, key, monthLabel);
     if (!k) continue;
     const r = { partner: app.partnerRate, agent: app.agentRate };
@@ -285,6 +291,7 @@ export function liveMonths(role: Role, scope: PartnerScope): MonthRow[] {
   const idx = (d: Date) => d.getFullYear() * 12 + d.getMonth();
   const at = (d: Date) => months.find((x) => x.key === idx(d));
   for (const app of set) {
+    if (app.withdrawn) continue; // #2 terminal: excluded from trailing-12-month volume/fees
     if (app.sentAt && idx(app.sentAt) >= lo && idx(app.sentAt) <= hi) { const m = at(app.sentAt); if (m) m.refs += 1; }
     if (app.paidAt && idx(app.paidAt) >= lo && idx(app.paidAt) <= hi) {
       const m = at(app.paidAt);

@@ -80,6 +80,9 @@ export function getActivity(opts: ActivityScope): ActivityEntry[] {
     }
     const base = { ref: r.ref, tenant: r.tenant, prop: r.prop, branch: r.branch, agency: r.agency, partner: r.partner };
     const add = (kind: ActivityKind, at: Date) => entries.push({ id: `${r.ref}-${kind}`, kind, at, ...base });
+    // #2 Withdrawn is terminal and left the Sent cohort: emit a single 'withdrawn'
+    // entry (never a 'sent' event that would count it as an active referral).
+    if (r.status === 'withdrawn') { add('withdrawn', event); return; }
     add('sent', sentAt);
     if (paidAt) add('paid', paidAt);
     if (deedAt) add('deed', deedAt);
