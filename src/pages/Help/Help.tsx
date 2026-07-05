@@ -66,7 +66,7 @@ function servableHref(r: HelpResource): string | null {
   // These are real files, so they are safe to open in the viewer. Any OTHER relative
   // href is not: an absent relative file falls back to index.html and would embed the
   // whole portal in the viewer (#75), so only this known directory is allowed.
-  if (/^\/help-docs\/[\w./-]+\.(html?|pdf)(\?|#|$)/i.test(h)) return h;
+  if (/^\/help-docs\/[\w.-]+\.(html?|pdf)(\?|#|$)/i.test(h)) return h; // flat filenames only — no '/' so no path traversal
   return null;
 }
 // #110 Role gating. A resource with minRole is hidden from roles below it:
