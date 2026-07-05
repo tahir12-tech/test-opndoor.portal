@@ -162,6 +162,7 @@ export function lapsingWithin14(role: Role, scope: PartnerScope): number {
 
 /** Per-group accumulator, emitted as a LeagueRow. */
 interface Group {
+  id: string;
   name: string;
   sub: string;
   partner?: string;
@@ -173,6 +174,7 @@ interface Group {
 
 function emit(g: Group): LeagueRow {
   return {
+    key: g.id, // #107 partner-distinct identity for week-over-week movement matching
     name: g.name,
     sub: g.sub,
     partner: g.partner,
@@ -216,7 +218,7 @@ function groupRows(set: FullApp[], key: GroupKey, start: Date, end: Date): Leagu
   const map = new Map<string, Group>();
   const get = (id: string, name: string, sub: string, partner: string): Group => {
     let g = map.get(id);
-    if (!g) { g = { name, sub, partner, refs: 0, paid: 0, deed: 0, feesGross: 0, refundValue: 0, partnerComm: 0, agentComm: 0, partnerCommExcl: 0, agentCommExcl: 0 }; map.set(id, g); }
+    if (!g) { g = { id, name, sub, partner, refs: 0, paid: 0, deed: 0, feesGross: 0, refundValue: 0, partnerComm: 0, agentComm: 0, partnerCommExcl: 0, agentCommExcl: 0 }; map.set(id, g); }
     return g;
   };
   for (const app of set) {
@@ -265,12 +267,29 @@ export function liveVolume(role: Role, scope: PartnerScope, period: Period): { b
 }
 
 /** Live league rows for one view (agency/branch/referrer), period + scope filtered. */
+/** Stable identity of a league row (same entity across two rankings). Prefers the
+    partner-distinct group key, so two same-named referrers at different partners never
+    collide on movement; falls back to name|sub|partner for rows without a key (mock). */
+function leagueKey(r: LeagueRow): string {
+  return r.key ?? `${r.name}|${r.sub}|${r.partner ?? ''}`;
+}
+
 export function liveLeague(view: LeagueView, role: Role, scope: PartnerScope, partner: string, period: Period): LeagueRow[] {
   const [start, end] = periodRange(period);
   // opndoor admin's in-page partner filter narrows an all-partners scope to one.
   const effScope: PartnerScope = scope === ALL_PARTNERS && partner ? partner : scope;
   const set = scopeFull(allFull(), role, effScope);
-  return groupRows(set, view, start, end);
+  const cur = groupRows(set, view, start, end);
+  // #107 Week-over-week movement: rank the SAME table as it stood 7 days ago (the
+  // window pulled back a week) and diff positions by entity (on the fly, no store).
+  // A period shorter than a week has no comparable prior table, so movement is null.
+  const prevEnd = new Date(end.getTime() - 7 * DAY);
+  const priorRank = new Map<string, number>();
+  if (prevEnd > start) groupRows(set, view, start, prevEnd).forEach((r, i) => priorRank.set(leagueKey(r), i));
+  return cur.map((r, i) => {
+    const pr = priorRank.get(leagueKey(r));
+    return { ...r, movement: pr == null ? null : pr - i };
+  });
 }
 
 export interface MonthRow { label: string; refs: number; fees: number; deeds: number; comm: number; }

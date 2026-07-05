@@ -280,4 +280,10 @@ export interface LeagueRow {
   partnerComm: number;
   /** Agent commission (per-partner rate applied to fees). */
   agentComm: number;
+  /** #107 Week-over-week rank movement vs the same table 7 days prior: positive =
+      up N places, negative = down, 0 = held, null = new / not comparable. */
+  movement?: number | null;
+  /** Stable per-entity identity (partner-distinct), for matching a row to its prior
+      standing. Not displayed. Live rows only; mock rows fall back to name|sub|partner. */
+  key?: string;
 }

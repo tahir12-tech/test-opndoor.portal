@@ -54,7 +54,7 @@ interface RoleOption {
 }
 const ROLE_OPTIONS: RoleOption[] = [
   { id: 'superadmin', name: 'opndoor admin (Super-admin)', desc: "opndoor's internal admin. Full control of the portal: manages agencies, branches and users, syncs with HubSpot, edits help resources, and sees every referral." },
-  { id: 'management', name: 'Management', desc: 'Partner management and admin. The same screens and tools as a referrer, but across the whole estate with full visibility of all tracking and analytics. Cannot edit agency and branch records or portal settings.' },
+  { id: 'management', name: 'Management', desc: "Partner management and admin. The same screens and tools as a referrer, but across the whole partner with full visibility of all tracking and analytics. Manages the partner's own agencies, branches and team, with edits applying straight away. Cannot change portal settings." },
   { id: 'referrer', name: 'Referrer', desc: 'Sees and tracks only their own referrals. Can add agencies and branches on the fly while referring.' },
 ];
 
@@ -448,7 +448,7 @@ export function UserManagement() {
           <Field label="Last name"><input type="text" placeholder="Okafor" value={addLast} onChange={(e) => setAddLast(e.target.value)} /></Field>
           <Field label="Work email" span2><input type="email" placeholder="james@brackenhouse.co.uk" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} /></Field>
           {addRole !== 'superadmin' && (
-            <Field label="Partner company" span2 hint="opndoor admin users sit above all partners and do not belong to one.">
+            <Field label="Partner company" span2 hint="The partner company this user belongs to.">
               <select value={addPartnerId} onChange={(e) => setAddPartnerId(e.target.value)}>
                 {getPartners().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>

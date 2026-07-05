@@ -13,6 +13,7 @@
 // =====================================================================
 import Stripe from "npm:stripe@^17";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { titleCaseAddress } from "../_shared/text.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -68,7 +69,8 @@ Deno.serve(async (req) => {
     const rent = Number(app.monthly_rent ?? 0);
     const feeGBP = `£${rent.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
     const tenantName = [app.tenant_title, app.tenant_first_name, app.tenant_last_name].filter((x) => (x ?? "").toString().trim()).join(" ").trim();
-    const propFull = [app.prop_addr1, app.prop_addr2, app.prop_city, app.prop_postcode].filter(Boolean).join(", ");
+    // #8 Display-layer title-casing of the property address (postcode left raw).
+    const propFull = [titleCaseAddress(app.prop_addr1), titleCaseAddress(app.prop_addr2), titleCaseAddress(app.prop_city), app.prop_postcode].filter(Boolean).join(", ");
     const isPaid = app.status === "paid" || app.status === "deed" || app.payment_state === "paid";
     const isExpired = app.status === "expired";
     const payable = app.status === "sent" || app.status === "expired";
@@ -78,7 +80,7 @@ Deno.serve(async (req) => {
       partnerName,
       tenantName,
       tenantTitle: app.tenant_title ?? "",
-      addr1: app.prop_addr1 ?? "",
+      addr1: titleCaseAddress(app.prop_addr1 ?? ""),
       postcode: app.prop_postcode ?? "",
       propFull,
       tenancyStart: ddmmyyyy(app.tenancy_start),
@@ -93,9 +95,16 @@ Deno.serve(async (req) => {
     };
 
     if (action === "view") {
-      // Log the first view only (business-visible, partner-safe).
-      if (!tok.first_viewed_at) {
-        await service.from("payment_page_tokens").update({ first_viewed_at: new Date().toISOString() }).eq("token", token);
+      // #106 Log the first view ONCE, atomically. Two concurrent view requests (a
+      // double-mount, a retry, two tabs) both read first_viewed_at as null and both
+      // logged, so the tenant view showed up twice. Claim it with a single-winner
+      // conditional update (WHERE first_viewed_at IS NULL): only the row that was
+      // actually null returns, and only that winner writes the activity entry.
+      const { data: claimed } = await service.from("payment_page_tokens")
+        .update({ first_viewed_at: new Date().toISOString() })
+        .eq("token", token).is("first_viewed_at", null)
+        .select("token");
+      if (claimed && claimed.length > 0) {
         await service.from("activity_log").insert({
           application_id: app.id, kind: "tenant_viewed_payment_page",
           message: "Tenant viewed the payment page.", actor: "Tenant", visibility: "business",

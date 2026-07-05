@@ -14,6 +14,7 @@
 import Stripe from "npm:stripe@^17";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { paymentEmailTemplate, sendEmail } from "./email.ts";
+import { titleCaseAddress } from "../_shared/text.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -100,7 +101,8 @@ Deno.serve(async (req) => {
     const tenantEmail = app.tenant_email as string;
     const tenantTitle = (app.tenant_title as string) ?? "";
     const tenantLast = app.tenant_last_name as string;
-    const propertyAddr = [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", ");
+    // #8 Title-case the address line for display in the email; postcode left raw.
+    const propertyAddr = [titleCaseAddress(app.prop_addr1), app.prop_postcode].filter(Boolean).join(", ");
     const amountGBP = `£${rent.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
     // Stripe test-mode Checkout Session for the guarantor fee (one month's rent).

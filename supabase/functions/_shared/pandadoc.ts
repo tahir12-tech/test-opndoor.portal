@@ -10,6 +10,8 @@
 // field. Six tokens are merged from the application record; the template has one
 // Signature field (Tenant) and no Date field.
 // =====================================================================
+import { titleCaseAddress } from "./text.ts";
+
 const API = "https://api.pandadoc.com/public/v1";
 // Trim: a stray space pasted into a secret (e.g. a leading space on the template
 // id) otherwise yields PandaDoc 404 "Template is not available".
@@ -65,7 +67,8 @@ export interface DeedApp {
 // the contract that keeps the template swappable with no code change). issue_date
 // is the deed's dated line (a merge token, never a recipient-editable field).
 function tokens(a: DeedApp, issueDate: string) {
-  const address = [a.prop_addr1, a.prop_addr2, a.prop_city, a.prop_postcode].filter(Boolean).join(", ");
+  // #8 Title-case the printed deed's address merge field for display; postcode left raw.
+  const address = [titleCaseAddress(a.prop_addr1), titleCaseAddress(a.prop_addr2), titleCaseAddress(a.prop_city), a.prop_postcode].filter(Boolean).join(", ");
   return [
     { name: "reference_number", value: a.guarantee_ref },
     { name: "tenant_name", value: `${a.tenant_first_name} ${a.tenant_last_name}` },

@@ -67,7 +67,8 @@ function receiptTemplate(p: { title: string; lastName: string; propertyAddr: str
       <div style="font:800 30px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${PAID};margin-top:4px;">${p.amount}</div>
       <div style="font:400 13px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:2px;">One-off guarantor fee. Reference ${p.guaranteeRef}.</div>
     </td></tr></table>
-    <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">Once you've signed, your letting agent receives the executed deed and your tenancy can proceed. Nothing else is needed from you.</p>`;
+    <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">Once you've signed, your letting agent receives the executed deed and your tenancy can proceed. Nothing else is needed from you.</p>
+    <p style="margin:8px 0 0;font-size:13px;color:${INK_SOFT};">If you've already signed your deed, nothing more is needed.</p>`;
   return { subject, html: layout(inner, p.intendedFor) };
 }
 

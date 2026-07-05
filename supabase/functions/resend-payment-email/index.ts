@@ -11,6 +11,7 @@
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { paymentEmailTemplate, sendEmail } from "./email.ts";
+import { titleCaseAddress } from "../_shared/text.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -51,7 +52,8 @@ Deno.serve(async (req) => {
     if (!app.payment_url) return json({ ok: false, error: "No payment link exists for this application yet." }, 400);
 
     const rent = Number(app.monthly_rent);
-    const propertyAddr = [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", ");
+    // #8 Title-case the address line for display in the email; postcode left raw.
+    const propertyAddr = [titleCaseAddress(app.prop_addr1), app.prop_postcode].filter(Boolean).join(", ");
     const service = createClient(SUPABASE_URL, SERVICE);
 
     // #1 Point the resend at the opndoor confirmation page (/pay?token=...), not the

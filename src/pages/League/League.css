@@ -230,3 +230,4 @@
 .lt-move--up { color: var(--paid, #1f9d6b); }
 .lt-move--down { color: var(--danger, #c0392b); }
 .lt-move--flat { color: var(--ink-mute, #8579ab); font-weight: 600; }
+.lt-move--new { color: var(--ink-mute, #8579ab); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }

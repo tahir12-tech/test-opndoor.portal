@@ -14,6 +14,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { verifyWebhook, downloadPdf } from "../_shared/pandadoc.ts";
 import { deliverDeedToAgent } from "../_shared/deedEmail.ts";
 import { deliverExecutedDeedToTenant } from "../_shared/executedDeedEmail.ts";
+import { titleCaseAddress } from "../_shared/text.ts";
 
 Deno.serve(async (req) => {
   const signature = new URL(req.url).searchParams.get("signature") ?? "";
@@ -82,7 +83,8 @@ Deno.serve(async (req) => {
             ref: app.guarantee_ref,
             tenantTitle: app.tenant_title ?? "",
             tenantName: `${app.tenant_first_name} ${app.tenant_last_name}`,
-            addr1: app.prop_addr1 ?? "",
+            // #8 Title-case the address line for display; postcode left raw.
+            addr1: titleCaseAddress(app.prop_addr1 ?? ""),
             postcode: app.prop_postcode ?? "",
             tenancyStart: app.tenancy_start ?? null,
             agencyName,
@@ -100,7 +102,8 @@ Deno.serve(async (req) => {
           ref: app.guarantee_ref,
           tenantEmail: app.tenant_email ?? "",
           tenantName: `${app.tenant_first_name ?? ""} ${app.tenant_last_name ?? ""}`.trim(),
-          propertyAddr: [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", "),
+          // #8 Title-case the address line for display; postcode left raw.
+          propertyAddr: [titleCaseAddress(app.prop_addr1), app.prop_postcode].filter(Boolean).join(", "),
           tenancyStart: app.tenancy_start ?? null,
           pdfPath: path,
         });

@@ -21,6 +21,11 @@ import { sb } from '@/lib/supabase';
 
 const DAY = 86_400_000;
 
+// #107 Deterministic mock movement so the demo League shows ▲/▼/– without a live
+// back end. Keyed on the entity name so it is stable across renders.
+const MOCK_MOVE = [2, 0, -1, 1, 0, -2, 3, 0, -1, 1];
+const mockMove = (key: string): number => MOCK_MOVE[key.length % MOCK_MOVE.length];
+
 export interface LeagueOpts {
   role: Role;
   scope: PartnerScope;
@@ -62,14 +67,14 @@ export function getLeague(view: LeagueView, opts: LeagueOpts): LeagueRow[] {
           const [sp, pd] = convFor('agency', a.name);
           const cv = sp * pd;
           const sub = `${a.branches ? a.branches.length : 0} branches`;
-          rows.push({ name: a.name, sub, partner: partnerName(a.partner || HOME_PARTNER), refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
+          rows.push({ name: a.name, sub, partner: partnerName(a.partner || HOME_PARTNER), refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0, movement: mockMove(a.name) });
         } else {
           (a.branches || []).forEach((b) => {
             const refs = b.referrals || 0;
             const fees = feesOf(b);
             const [sp, pd] = convFor('branch', b.name);
             const cv = sp * pd;
-            rows.push({ name: b.name, sub: `${a.name} · ${b.area || ''}`, partner: partnerName(a.partner || HOME_PARTNER), refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
+            rows.push({ name: b.name, sub: `${a.name} · ${b.area || ''}`, partner: partnerName(a.partner || HOME_PARTNER), refs, fees, paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0, movement: mockMove(b.name) });
           });
         }
       });
@@ -81,7 +86,7 @@ export function getLeague(view: LeagueView, opts: LeagueOpts): LeagueRow[] {
       const sp = 0.72 + ((i * 5) % 16) / 100;
       const pd = 0.86 + ((i * 3) % 10) / 100;
       const cv = sp * pd;
-      rows.push({ name: nm, sub: 'Referrer', refs, fees: Math.round(refs * 0.8 * AVG_RENT), paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0 });
+      rows.push({ name: nm, sub: 'Referrer', refs, fees: Math.round(refs * 0.8 * AVG_RENT), paid: Math.round(refs * sp), deed: Math.round(refs * cv), sp, conv: cv, partnerComm: 0, agentComm: 0, movement: MOCK_MOVE[i % MOCK_MOVE.length] });
     });
   }
 

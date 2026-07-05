@@ -93,9 +93,11 @@ function useLeaguePeriod(): [Period, (id: string) => void] {
   return [period, (id: string) => setPeriodState(periods.find((p) => p.id === id) ?? periods[0])];
 }
 
-// #5 Week-over-week rank movement indicator (▲n up / ▼n down / – held / · new).
+// #5/#107 Week-over-week rank movement (▲n up / ▼n down / – held / new = no prior
+// standing, e.g. new entrant or no 7-day comparison yet). Rendered explicitly, never
+// blank.
 function Movement({ m }: { m: number | null }) {
-  if (m == null) return <span className="lt-move lt-move--flat" title="New this period">·</span>;
+  if (m == null) return <span className="lt-move lt-move--new" title="New, or no comparison 7 days ago">new</span>;
   if (m === 0) return <span className="lt-move lt-move--flat" title="No change">–</span>;
   const up = m > 0;
   return <span className={`lt-move ${up ? 'lt-move--up' : 'lt-move--down'}`} title={`${up ? 'Up' : 'Down'} ${Math.abs(m)} since last week`}>{up ? '▲' : '▼'}{Math.abs(m)}</span>;
@@ -340,6 +342,7 @@ function FullLeagueView() {
             <thead>
               <tr>
                 <th className="num" style={{ width: 44 }}>#</th>
+                <th style={{ width: 56 }} title="Movement since the same table 7 days ago">7d</th>
                 {cols.map((c) => {
                   const [key, label, sortable] = c;
                   const isSort = sort === key;
@@ -362,6 +365,7 @@ function FullLeagueView() {
                 return (
                   <tr key={`${r.name}-${r.sub}`}>
                     <td className="num"><span className={`rank${rank <= 3 ? ' top' : ''}`}>{rank}</span></td>
+                    <td><Movement m={r.movement ?? null} /></td>
                     {cols.map((c, ci) =>
                       ci === 0 ? (
                         <td key={c[0]}>

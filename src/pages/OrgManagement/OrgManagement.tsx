@@ -373,7 +373,7 @@ export function OrgManagement() {
   const eyebrow = role === 'superadmin' ? 'opndoor admin' : role === 'management' ? 'Management' : 'Organisation';
   const roleNote: ReactNode =
     role === 'superadmin' ? <>As an <b>opndoor admin</b> you have full control: add, edit and reorganise agencies and branches, and sync the hierarchy with HubSpot.</>
-      : role === 'management' ? <>You can view every agency and branch across the estate and add new ones. Editing existing records and HubSpot sync are handled by <b>opndoor</b>.</>
+      : role === 'management' ? <>You can view, add and edit your partner's agencies and branches, and your changes apply straight away. HubSpot sync is handled by <b>opndoor</b>.</>
         : <>You can view every agency and branch. Adding and editing records is handled by your management team and <b>opndoor</b>.</>;
 
   // Filtered, with expand-all while searching (mirrors org-management.html).

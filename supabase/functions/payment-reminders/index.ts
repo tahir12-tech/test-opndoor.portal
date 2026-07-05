@@ -20,6 +20,7 @@
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { reminderEmailTemplate, sendEmail } from "./email.ts";
+import { titleCaseAddress } from "../_shared/text.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -104,7 +105,8 @@ Deno.serve(async (req) => {
       const tpl = reminderEmailTemplate({
         title: r.tenant_title ?? "",
         lastName: r.tenant_last_name ?? "",
-        propertyAddr: [r.prop_addr1, r.prop_postcode].filter(Boolean).join(", "),
+        // #8 Title-case the address line for display; postcode left raw.
+        propertyAddr: [titleCaseAddress(r.prop_addr1), r.prop_postcode].filter(Boolean).join(", "),
         guaranteeRef: r.guarantee_ref,
         amount: `£${rent.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`,
         payUrl,

@@ -16,6 +16,7 @@ import { addApplicationNote, addContact, amendTenancyStart, amendTenancyStartDb,
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { parseFlexibleDate } from '@/lib/validation';
+import { titleCaseAddress } from '@/lib/format';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
@@ -254,7 +255,10 @@ export function ApplicationDetail() {
     else toast(r.error || 'Could not open the deed.');
   };
 
-  const reached = d.status === 'sent' ? 1 : d.status === 'paid' ? 2 : 3;
+  // #105 Withdrawn/Expired are terminal pre-payment exits: only Sent was reached,
+  // and the timeline must render the termination, never a false Paid/Deed tick.
+  const timelineTerminated = d.status === 'withdrawn' || d.status === 'expired';
+  const reached = timelineTerminated ? 1 : d.status === 'sent' ? 1 : d.status === 'paid' ? 2 : 3;
   // Third-node caption: on completion it states the outcome; while awaiting it
   // surfaces the deed's signing journey (sent / viewed / not yet viewed). The
   // three milestones themselves are unchanged.
@@ -268,9 +272,14 @@ export function ApplicationDetail() {
       ? `Awaiting tenant signature · viewed ${fmtStamp(new Date(paymentInfo.deedViewedAt))}`
       : `Sent ${paymentInfo.deedSentAt ? fmtStamp(new Date(paymentInfo.deedSentAt)) : ''}, not yet viewed`;
   }
+  // #105 On a terminal pre-payment exit the second node shows the termination
+  // (greyed via the timeline's 'terminated' state), not "Awaiting payment".
+  const paidStep = timelineTerminated
+    ? { label: 'Paid', date: d.status === 'withdrawn' ? 'Withdrawn' : 'Expired', note: d.status === 'withdrawn' ? 'Withdrawn before payment' : 'Expired, unpaid after 14 days' }
+    : { label: 'Paid', date: d.paidStr || 'Awaiting payment', note: d.paidStr ? `Guarantor fee paid · ${d.rent}` : 'Guarantor fee not yet paid' };
   const steps = [
     { label: 'Sent', date: d.sentStr, note: `Referral sent to tenant by ${d.referrer}` },
-    { label: 'Paid', date: d.paidStr || 'Awaiting payment', note: d.paidStr ? `Guarantor fee paid · ${d.rent}` : 'Guarantor fee not yet paid' },
+    paidStep,
     { label: 'Deed Issued', date: deedDate, note: deedNote },
   ];
 
@@ -545,7 +554,7 @@ export function ApplicationDetail() {
       <Card style={{ marginBottom: 18 }}>
         <CardHead title="Status timeline" sub="Sent to Paid to Deed Issued" />
         <CardBody>
-          <StatusTimeline steps={steps} reached={reached} />
+          <StatusTimeline steps={steps} reached={reached} terminated={timelineTerminated} />
         </CardBody>
       </Card>
 
@@ -565,10 +574,10 @@ export function ApplicationDetail() {
           <Card>
             <CardHead title="Property" />
             <CardBody style={{ paddingTop: 6, paddingBottom: 6 }}>
-              <div className="drow"><span className="drow__k">Address line 1</span><span className="drow__v">{d.addr1}</span></div>
-              <div className="drow"><span className="drow__k">Address line 2</span><span className="drow__v">{d.addr2 || '—'}</span></div>
-              <div className="drow"><span className="drow__k">City / town</span><span className="drow__v">{d.city}</span></div>
-              <div className="drow"><span className="drow__k">County</span><span className="drow__v">{d.county}</span></div>
+              <div className="drow"><span className="drow__k">Address line 1</span><span className="drow__v">{titleCaseAddress(d.addr1)}</span></div>
+              <div className="drow"><span className="drow__k">Address line 2</span><span className="drow__v">{d.addr2 ? titleCaseAddress(d.addr2) : '—'}</span></div>
+              <div className="drow"><span className="drow__k">City / town</span><span className="drow__v">{titleCaseAddress(d.city)}</span></div>
+              <div className="drow"><span className="drow__k">County</span><span className="drow__v">{titleCaseAddress(d.county)}</span></div>
               <div className="drow"><span className="drow__k">Postcode</span><span className="drow__v"><b>{d.postcode}</b></span></div>
             </CardBody>
           </Card>
@@ -579,8 +588,8 @@ export function ApplicationDetail() {
               <div className="drow"><span className="drow__k">Agency</span><span className="drow__v"><b>{d.agency}</b></span></div>
               <div className="drow"><span className="drow__k">Branch</span><span className="drow__v">{d.branch}</span></div>
               {role !== 'referrer' && d.partnerName && <div className="drow"><span className="drow__k">Partner</span><span className="drow__v">{d.partnerName}</span></div>}
-              <div className="drow"><span className="drow__k">Address</span><span className="drow__v">{d.agentAddr}</span></div>
-              <div className="drow"><span className="drow__k">Deed in favour of</span><span className="drow__v">{d.addr1}, {d.postcode}</span></div>
+              <div className="drow"><span className="drow__k">Address</span><span className="drow__v">{titleCaseAddress(d.agentAddr)}</span></div>
+              <div className="drow"><span className="drow__k">Deed in favour of</span><span className="drow__v">{titleCaseAddress(d.addr1)}, {d.postcode}</span></div>
             </CardBody>
           </Card>
 

@@ -66,12 +66,16 @@ export function Health() {
   const toast = useToast();
   const [data, setData] = useState<CronHealth | null>(null);
   const [loading, setLoading] = useState(true);
+  // #108 A visible "snapshot" time so Refresh has an observable effect even when the
+  // underlying cron figures are unchanged.
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
 
   const reload = useCallback(async () => {
     if (!SUPABASE_ENABLED) { setLoading(false); return; }
     setLoading(true);
     try {
       setData(await getCronHealth());
+      setRefreshedAt(new Date());
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not load the health metrics.');
     } finally {
@@ -89,8 +93,13 @@ export function Health() {
         <p className="page-head__sub">Cron liveness and the real HTTP outcome of each scheduled call, the last 24 hours of email, webhook and deed failures, and the backlog awaiting a human.</p>
       </div>
       {SUPABASE_ENABLED && (
-        <div className="page-head__actions">
-          <Button variant="ghost" size="sm" disabled={loading} onClick={() => void reload()}><Icon name="refresh" /> Refresh</Button>
+        <div className="page-head__actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {refreshedAt && (
+            <span style={{ fontSize: 12.5, color: 'var(--ink-mute)' }}>
+              Snapshot {refreshedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
+          <Button variant="ghost" size="sm" disabled={loading} onClick={() => void reload()}><Icon name="refresh" /> {loading ? 'Refreshing…' : 'Refresh'}</Button>
         </div>
       )}
     </div>

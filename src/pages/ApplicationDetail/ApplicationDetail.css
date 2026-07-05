@@ -147,6 +147,18 @@
   color: var(--ink-mute);
   border: 1.5px solid var(--line-strong);
 }
+/* #105 Terminal pre-payment exit (withdrawn / expired): greyed, a ban glyph, never
+   a success tick. */
+.tl-step--terminated .tl-step__node {
+  background: var(--app-bg, #f7f7fb);
+  color: var(--ink-mute, #7a7a8c);
+  border: 1.5px solid var(--line-strong);
+}
+.tl-step--terminated .tl-step__label,
+.tl-step--terminated .tl-step__date,
+.tl-step--terminated .tl-step__note {
+  color: var(--ink-mute, #7a7a8c);
+}
 .tl-step::after {
   content: '';
   position: absolute;
@@ -161,7 +173,8 @@
   display: none;
 }
 .tl-step--todo::after,
-.tl-step--current::after {
+.tl-step--current::after,
+.tl-step--terminated::after {
   background: var(--line-strong);
 }
 @media (max-width: 640px) {

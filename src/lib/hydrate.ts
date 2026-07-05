@@ -99,7 +99,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
         'payment_state, refunded_at, refunded_amount, paid_amount, refund_after_start, ' +
         'withdrawn_at, withdrawn_reason, withdrawn_note, ' +
         'deed_state, deed_sent_at, deed_viewed_at, expiry_reminders_sent, ' +
-        'referrer_id, branch_id, agency_id, partner_id, ' +
+        'referrer_id, referrer_name, branch_id, agency_id, partner_id, ' +
         'branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name, role), partner:partners(slug)',
     ),
   ]);
@@ -253,7 +253,9 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     partner: slugOfApp(a),
     agency: emb(a.agency)?.name ?? '',
     branch: emb(a.branch)?.name ?? '',
-    referrer: emb(a.referrer)?.full_name ?? '',
+    // #97 Prefer the snapshotted referrer name (survives deactivation / users-RLS);
+    // fall back to the live join, then a stable placeholder that is never counted.
+    referrer: a.referrer_name ?? emb(a.referrer)?.full_name ?? '(unknown)',
     referrerRole: emb(a.referrer)?.role ?? null,
     owner: ownerFlag(a),
     status: a.status as Status,
@@ -290,7 +292,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     rent: num(a.monthly_rent),
     status: a.status as Status,
     date: eventDate(a),
-    referrer: emb(a.referrer)?.full_name ?? '',
+    referrer: a.referrer_name ?? emb(a.referrer)?.full_name ?? '(unknown)', // #97
     owner: ownerFlag(a),
     withdrawnReason: (a.withdrawn_reason ?? null) as AppRecord['withdrawnReason'],
     // Real values so the detail view shows exactly what was entered, and when.

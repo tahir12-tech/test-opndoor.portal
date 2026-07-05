@@ -21,6 +21,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateDeed } from "../_shared/pandadoc.ts";
 import { deliverRefund } from "../_shared/refundEmail.ts";
 import { deliverPaymentReceipt } from "../_shared/paymentReceiptEmail.ts";
+import { titleCaseAddress } from "../_shared/text.ts";
 
 Deno.serve(async (req) => {
   const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
@@ -86,7 +87,8 @@ Deno.serve(async (req) => {
               tenantEmail: appRow.tenant_email,
               title: appRow.tenant_title ?? "",
               lastName: appRow.tenant_last_name ?? "",
-              propertyAddr: [appRow.prop_addr1, appRow.prop_postcode].filter(Boolean).join(", "),
+              // #8 Title-case the address line for display; postcode left raw.
+              propertyAddr: [titleCaseAddress(appRow.prop_addr1), appRow.prop_postcode].filter(Boolean).join(", "),
               amount: amountGBP,
               guaranteeRef: appRow.guarantee_ref,
             });
@@ -118,7 +120,8 @@ Deno.serve(async (req) => {
             tenantEmail: appRow.tenant_email,
             title: appRow.tenant_title ?? "",
             lastName: appRow.tenant_last_name ?? "",
-            propertyAddr: [appRow.prop_addr1, appRow.prop_postcode].filter(Boolean).join(", "),
+            // #8 Title-case the address line for display; postcode left raw.
+            propertyAddr: [titleCaseAddress(appRow.prop_addr1), appRow.prop_postcode].filter(Boolean).join(", "),
             amount: amountGBP,
             guaranteeRef: appRow.guarantee_ref,
           });
