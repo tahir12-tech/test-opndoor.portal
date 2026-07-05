@@ -92,6 +92,7 @@ export function paymentEmailTemplate(p: {
       <a href="${p.payUrl}" style="display:inline-block;background:${HELIOTROPE};color:#ffffff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Pay the guarantor fee</a>
     </td></tr></table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">It's a one-off payment for opndoor to act as your professional guarantor, providing a Deed of Guarantee in favour of the property so your tenancy can proceed. Payment is secure and handled by Stripe.</p>
+    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">No longer need this? <a href="${p.payUrl}" style="color:${HELIOTROPE_DEEP};">Let us know</a> and we'll close it off. No payment will be taken.</p>
     <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.payUrl}</span></p>`;
   return { subject, html: layout(subject, inner, p.intendedFor) };
 }

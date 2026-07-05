@@ -19,7 +19,7 @@
 // manual resend), which is why the "8am payment reminder" never delivered.
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { paymentEmailTemplate, sendEmail } from "./email.ts";
+import { reminderEmailTemplate, sendEmail } from "./email.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -80,6 +80,11 @@ Deno.serve(async (req) => {
 
     const pToday = (test && typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) ? body.date : nowL.date;
 
+    // #13 Auto-expire unpaid Sent applications older than 14 days FIRST, so an
+    // expired application is never also reminded. (fire_payment_reminders already
+    // filters status='sent', so this only needs to run before it.)
+    const { data: expiredCount } = await service.rpc("expire_stale_applications", { p_today: pToday });
+
     // Fire due reminders (idempotent). Returns only the NEW ones to email.
     const { data: fired, error: rpcErr } = await service.rpc("fire_payment_reminders", { p_today: pToday });
     if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);
@@ -89,17 +94,22 @@ Deno.serve(async (req) => {
       prop_addr1: string | null; prop_postcode: string | null; monthly_rent: number | null; payment_url: string | null;
     }>;
 
+    const APP_URL = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
     let emailed = 0, emailFailed = 0;
     for (const r of due) {
       const rent = Number(r.monthly_rent ?? 0);
-      const tpl = paymentEmailTemplate({
+      // #1/#2 Point the reminder at the confirmation page with a per-touch utm_source.
+      const { data: pageToken } = await service.rpc("mint_payment_page_token", { p_ref: r.guarantee_ref });
+      const payUrl = pageToken && APP_URL ? `${APP_URL}/pay?token=${pageToken}&utm_source=reminder_${r.days}` : (r.payment_url ?? "");
+      const tpl = reminderEmailTemplate({
         title: r.tenant_title ?? "",
         lastName: r.tenant_last_name ?? "",
         propertyAddr: [r.prop_addr1, r.prop_postcode].filter(Boolean).join(", "),
         guaranteeRef: r.guarantee_ref,
         amount: `£${rent.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`,
-        payUrl: r.payment_url ?? "",
+        payUrl,
         intendedFor: r.tenant_email ?? "the tenant",
+        day: Number(r.days),
       });
       const res = await sendEmail({ subject: tpl.subject, html: tpl.html });
       if (res.ok) {
@@ -113,7 +123,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, test, date: pToday, due: due.length, emailed, emailFailed });
+    return json({ ok: true, test, date: pToday, expired: expiredCount ?? 0, due: due.length, emailed, emailFailed });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
     // #3 A total cron failure (a crash before it could log anything) still alerts

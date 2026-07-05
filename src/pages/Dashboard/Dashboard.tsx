@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ALL_PARTNERS, buildApplicationDoc, buildBordereauCsv, buildExpiriesCsv, buildPerformanceDoc, downloadCsv, exportBranded,
+  ALL_PARTNERS, buildApplicationDoc, buildBordereauCsv, buildExpiriesCsv, buildPerformanceDoc, buildPartnerStatementDoc, buildAgentStatementDoc, downloadCsv, exportBranded,
   fmtBig, getCommissionSettlement, getAgentCommissionSettlement, livePartnerBreakdown, getDashboardData, getPartners, getPeriods, getTrend, partnerName,
   getBordereauRate, getBordereauRateMeta, setBordereauRate, pendingTenancyCorrections,
   type LeagueRow, type Period, type TrendRow,
@@ -95,6 +95,14 @@ export function Dashboard() {
   const agentSettleDate = `${agentSettlement.settlementDate.getDate()} ${agentSettlement.settlementDate.toLocaleDateString('en-GB', { month: 'long' })} ${agentSettlement.settlementDate.getFullYear()}`;
   const dmyShort = (x: Date) => `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`;
 
+  // #6 Per-payee commission statements: a branded, self-footing statement for one
+  // partner (partner commission) or one agency (agent commission). Each builder reads
+  // the SAME settlement data rendered below (getCommissionSettlement /
+  // getAgentCommissionSettlement, same role + scope), so a downloaded statement foots
+  // exactly to the on-screen settlement figure. Gated with the sections below (canSeeSettlements).
+  const downloadPartnerStatement = (partnerId: string) => void exportBranded(buildPartnerStatementDoc(role, partnerScope, partnerId));
+  const downloadAgentStatement = (partner: string, agency: string) => void exportBranded(buildAgentStatementDoc(role, partnerScope, partner, agency));
+
   // ---- Needs-attention row (compact stat-lines promoted from existing data) ----
   // Same scoped figures shown everywhere; each line renders only when non-zero.
   const canSeeSettlements = role === 'superadmin' || role === 'management';
@@ -129,6 +137,11 @@ export function Dashboard() {
       <div className="settle__row">
         <span>Agent commission payable to <b>{a.agency}</b></span>
         <span className="settle__amt">{gbpPence(a.commission)}</span>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <Button variant="ghost" size="sm" onClick={() => downloadAgentStatement(a.partner, a.agency)} title={`Download a branded agent commission statement for ${a.agency} (${agentSettlement.monthLabel}). Foots to the figure above.`}>
+          <Icon name="download" /> Download statement
+        </Button>
       </div>
       <details className="settle__exp">
         <summary>Show applications ({a.apps.length})</summary>
@@ -616,6 +629,11 @@ export function Dashboard() {
                   <div className="settle__row">
                     <span>Commission payable to <b>{p.partnerName}</b></span>
                     <span className="settle__amt">{gbpPence(p.commission)}</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <Button variant="ghost" size="sm" onClick={() => downloadPartnerStatement(p.partner)} title={`Download a branded partner commission statement for ${p.partnerName} (${settlement.monthLabel}). Foots to the figure above.`}>
+                      <Icon name="download" /> Download statement
+                    </Button>
                   </div>
                   <details className="settle__exp">
                     <summary>Show applications ({p.apps.length})</summary>

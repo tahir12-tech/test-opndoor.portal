@@ -19,6 +19,8 @@ import type { Agency, Branch } from './types';
 import { HOME_PARTNER } from './mock/partners';
 import { sb } from '@/lib/supabase';
 
+const DAY = 86_400_000;
+
 export interface LeagueOpts {
   role: Role;
   scope: PartnerScope;
@@ -98,6 +100,9 @@ export interface ReferrerLeagueRow {
   fees: number;
   /** True for the signed-in referrer's own row. */
   self: boolean;
+  /** #5 Week-over-week rank movement vs the same table 7 days prior: positive =
+      climbed N places, negative = fell, 0 = held, null = new / not comparable. */
+  movement: number | null;
 }
 export interface ReferrerBoard {
   mode: LeaderboardMode;
@@ -116,24 +121,43 @@ export async function getReferrerLeague(period: Period): Promise<ReferrerBoard> 
   const mode = getReferrerLeaderboardMode(homePartner());
   if (liveAvailable()) {
     const [start, end] = periodRange(period);
-    const { data, error } = await sb().rpc('referrer_league', { p_start: start.toISOString(), p_end: end.toISOString() });
-    if (error) throw new Error(error.message);
+    // #5 Movement = rank change vs the SAME table 7 days earlier: run the ranking
+    // again with the window end pulled back a week (on-the-fly, no snapshot store).
+    const prevEnd = new Date(end.getTime() - 7 * DAY);
+    const [cur, prev] = await Promise.all([
+      sb().rpc('referrer_league', { p_start: start.toISOString(), p_end: end.toISOString() }),
+      prevEnd > start
+        ? sb().rpc('referrer_league', { p_start: start.toISOString(), p_end: prevEnd.toISOString() })
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (cur.error) throw new Error(cur.error.message);
+    // Prior-rank by name (rows arrive already ranked, so index === rank).
+    const priorRank = new Map<string, number>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: ReferrerLeagueRow[] = (data ?? []).map((r: any) => ({
-      name: r.name ?? '(unknown)', refs: Number(r.refs) || 0, fees: Number(r.fees) || 0, self: !!r.is_self,
-    }));
+    (prev.data ?? []).forEach((r: any, i: number) => priorRank.set(r.name ?? '', i));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: ReferrerLeagueRow[] = (cur.data ?? []).map((r: any, i: number) => {
+      const nm = r.name ?? '(unknown)';
+      const pr = priorRank.get(nm);
+      return { name: nm, refs: Number(r.refs) || 0, fees: Number(r.fees) || 0, self: !!r.is_self, movement: pr == null ? null : pr - i };
+    });
     return { mode, rows };
   }
   // Mock: the signed-in referrer is the first name (Priya Nair).
   const SELF = LEAGUE_REFERRER_NAMES[0];
+  // #5 Deterministic mock movement so the demo shows ▲/▼/– without a live back end.
+  const MOCK_MOVE = [1, 0, -1, 2, 0, -2, 1, 0];
   const all: ReferrerLeagueRow[] = LEAGUE_REFERRER_NAMES
     .map((nm, i) => {
       const refs = Math.max(3, Math.round(40 - i * 1.6));
-      return { name: nm, refs, fees: Math.round(refs * 0.8 * AVG_RENT), self: nm === SELF };
+      return { name: nm, refs, fees: Math.round(refs * 0.8 * AVG_RENT), self: nm === SELF, movement: MOCK_MOVE[i % MOCK_MOVE.length] };
     })
-    .sort((a, b) => b.refs - a.refs);
+    // #104 Rank by fees collected primary, referral count secondary, name tiebreak
+    // (matches the referrer_league RPC). Sorting only by count let a £0 referrer
+    // outrank a paying one.
+    .sort((a, b) => b.fees - a.fees || b.refs - a.refs || a.name.localeCompare(b.name));
   // #87 The viewing referrer's own row must always be present (even at zero).
-  if (!all.some((r) => r.self)) all.push({ name: SELF, refs: 0, fees: 0, self: true });
+  if (!all.some((r) => r.self)) all.push({ name: SELF, refs: 0, fees: 0, self: true, movement: null });
   if (mode === 'private') return { mode, rows: all.filter((r) => r.self) };
   if (mode === 'rankings') return { mode, rows: all.map((r) => ({ ...r, fees: 0 })) };
   return { mode, rows: all };

@@ -10,11 +10,11 @@
    configured (see addressService), and falls back to manual entry otherwise.
    Manual entry is always available via a toggle.
    ===================================================================== */
-import { useState, type FormEvent } from 'react';
+import { useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { addressLookupAvailable, ALL_PARTNERS, createReferral, findActiveReferralByTenantProperty, lookupAddresses, type AddressOption, type DuplicateMatch } from '@/data';
 import { Modal } from '@/components/ui/Modal';
-import { TITLE_OPTIONS, validateReferral, type ReferralValues } from '@/lib/validation';
+import { TITLE_OPTIONS, validateReferral, parseFlexibleDate, toISODate, type ReferralValues } from '@/lib/validation';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
@@ -72,6 +72,12 @@ export function NewApplication() {
   const orgOfficeError = org.agencyNew && org.singleOffice === null;
   const isValid = Object.keys(errors).length === 0 && !orgContactError && !orgPartnerError && !orgOfficeError;
   const set = (k: keyof ReferralValues, v: string) => setValues((prev) => ({ ...prev, [k]: v }));
+  // #103 Native date inputs reject pasted text in common formats; parse it and
+  // normalise to yyyy-mm-dd so Rightmove's copy-paste workflow just works.
+  const onPasteDate = (field: 'dob' | 'tenancyStart') => (e: ClipboardEvent<HTMLInputElement>) => {
+    const parsed = parseFlexibleDate(e.clipboardData.getData('text'));
+    if (parsed) { e.preventDefault(); set(field, toISODate(parsed)); }
+  };
   const markTouched = (k: string) => setTouched((t) => new Set(t).add(k));
   const err = (k: keyof ReferralValues) => ((submitted || touched.has(k)) ? errors[k] : undefined);
 
@@ -185,7 +191,7 @@ export function NewApplication() {
                   <input id="t-last" type="text" placeholder="Hartley" value={values.last} onChange={(e) => set('last', e.target.value)} onBlur={() => markTouched('last')} />
                 </Field>
                 <Field label={<>Date of birth <Req /></>} htmlFor="t-dob" error={err('dob')}>
-                  <input id="t-dob" type="date" min={dobMin} max={dobMax} value={values.dob} onChange={(e) => set('dob', e.target.value)} onBlur={() => markTouched('dob')} />
+                  <input id="t-dob" type="date" min={dobMin} max={dobMax} value={values.dob} onChange={(e) => set('dob', e.target.value)} onPaste={onPasteDate('dob')} onBlur={() => markTouched('dob')} />
                 </Field>
                 <Field label={<>Email <Req /></>} htmlFor="t-email" error={err('email')}>
                   <input id="t-email" type="email" placeholder="amelia@example.com" value={values.email} onChange={(e) => set('email', e.target.value)} onBlur={() => markTouched('email')} />
@@ -261,7 +267,7 @@ export function NewApplication() {
                   <input id="ty-rent" type="number" min="1" step="1" placeholder="2450" value={values.rent} onChange={(e) => set('rent', e.target.value)} onBlur={() => markTouched('rent')} />
                 </Field>
                 <Field label={<>Tenancy start date <Req /></>} htmlFor="ty-start" error={err('tenancyStart')}>
-                  <input id="ty-start" type="date" min={startMin} max={startMax} value={values.tenancyStart} onChange={(e) => set('tenancyStart', e.target.value)} onBlur={() => markTouched('tenancyStart')} />
+                  <input id="ty-start" type="date" min={startMin} max={startMax} value={values.tenancyStart} onChange={(e) => set('tenancyStart', e.target.value)} onPaste={onPasteDate('tenancyStart')} onBlur={() => markTouched('tenancyStart')} />
                 </Field>
               </div>
             </CardBody>

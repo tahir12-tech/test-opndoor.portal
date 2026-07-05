@@ -52,18 +52,24 @@ Deno.serve(async (req) => {
 
     const rent = Number(app.monthly_rent);
     const propertyAddr = [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", ");
+    const service = createClient(SUPABASE_URL, SERVICE);
+
+    // #1 Point the resend at the opndoor confirmation page (/pay?token=...), not the
+    // raw Stripe link; the page mints a fresh checkout session on demand.
+    const origin = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
+    const { data: pageToken } = await service.rpc("mint_payment_page_token", { p_ref: app.guarantee_ref });
+    const payUrl = pageToken && origin ? `${origin}/pay?token=${pageToken}&utm_source=resend` : app.payment_url;
+
     const tpl = paymentEmailTemplate({
       title: app.tenant_title ?? "",
       lastName: app.tenant_last_name,
       propertyAddr,
       guaranteeRef: app.guarantee_ref,
       amount: `£${rent.toLocaleString("en-GB", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`,
-      payUrl: app.payment_url,
+      payUrl,
       intendedFor: app.tenant_email,
     });
     const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html });
-
-    const service = createClient(SUPABASE_URL, SERVICE);
     // Partner-safe business message; test-mode redirect target stays admin-only.
     await service.from("activity_log").insert({
       application_id: app.id,

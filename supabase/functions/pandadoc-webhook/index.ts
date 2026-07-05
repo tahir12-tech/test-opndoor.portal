@@ -13,6 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { verifyWebhook, downloadPdf } from "../_shared/pandadoc.ts";
 import { deliverDeedToAgent } from "../_shared/deedEmail.ts";
+import { deliverExecutedDeedToTenant } from "../_shared/executedDeedEmail.ts";
 
 Deno.serve(async (req) => {
   const signature = new URL(req.url).searchParams.get("signature") ?? "";
@@ -41,7 +42,7 @@ Deno.serve(async (req) => {
     if (insErr) continue; // duplicate delivery -> skip
 
     const { data: app } = await service.from("applications")
-      .select("id, guarantee_ref, branch_id, tenant_title, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode, tenancy_start, agency:agencies(name)")
+      .select("id, guarantee_ref, branch_id, tenant_title, tenant_first_name, tenant_last_name, tenant_email, prop_addr1, prop_postcode, tenancy_start, agency:agencies(name)")
       .eq("pandadoc_document_id", docId).maybeSingle();
 
     if (status === "document.completed") {
@@ -51,7 +52,15 @@ Deno.serve(async (req) => {
         path = `${app.id}/${app.guarantee_ref}.pdf`;
         await service.storage.from("deeds").upload(path, pdf, { contentType: "application/pdf", upsert: true });
       }
-      await service.rpc("apply_deed_executed", { p_document_id: docId, p_pdf_path: path });
+      // supabase-js returns a DB error object rather than throwing: check it, or a
+      // transient failure would leave the deed un-executed while the "signed and
+      // issued" emails below still send. Delete the dedup row (so a PandaDoc retry
+      // re-processes rather than being deduped) and throw -> 500 -> retry.
+      const { error: execErr } = await service.rpc("apply_deed_executed", { p_document_id: docId, p_pdf_path: path });
+      if (execErr) {
+        await service.from("pandadoc_events").delete().eq("id", evId);
+        throw new Error(`apply_deed_executed failed: ${execErr.message}`);
+      }
       if (app) {
         // The signing event. The "Deed Issued" milestone (status/timeline) is
         // driven by apply_deed_executed above; this is the distinct signed entry.
@@ -82,6 +91,19 @@ Deno.serve(async (req) => {
         } else {
           await service.from("activity_log").insert({ application_id: app.id, kind: "deed_undelivered", message: "Deed issued, no agent contact on file, not sent.", actor: "System", visibility: "business" });
         }
+
+        // #4 Email the tenant their own signed deed (download link), regardless of
+        // whether the agent contact resolved. Idempotent via the pandadoc_events
+        // dedup above (document.completed runs once).
+        await deliverExecutedDeedToTenant(service, {
+          appId: app.id,
+          ref: app.guarantee_ref,
+          tenantEmail: app.tenant_email ?? "",
+          tenantName: `${app.tenant_first_name ?? ""} ${app.tenant_last_name ?? ""}`.trim(),
+          propertyAddr: [app.prop_addr1, app.prop_postcode].filter(Boolean).join(", "),
+          tenancyStart: app.tenancy_start ?? null,
+          pdfPath: path,
+        });
       }
     } else if (status === "document.viewed") {
       if (app) {

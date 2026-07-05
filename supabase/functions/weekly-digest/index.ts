@@ -59,6 +59,7 @@ function shiftDate(dateIso: string, days: number): string {
 interface DigestRow {
   partner_id: string; partner_name: string; sent: number; sent_paid: number; paid: number;
   fees: number; deeds: number; awaiting: number; top_branch: string | null; top_branch_fees: number;
+  climber?: { name: string; delta: number } | null; // #5 climber of the week
 }
 
 const V = "#271d5f", INK = "#5b4d86", LILAC = "#f8eff9", HELI = "#d364fb";
@@ -78,11 +79,20 @@ function digestEmail(p: { partnerName: string; rangeLabel: string; d: DigestRow;
   // Cohort conversion: of the referrals SENT this week, the share that have paid
   // (bounded 0-100%, never contradictory). "-" when none were sent this week.
   const conversion = d.sent > 0 ? pct(d.sent_paid, d.sent) : "n/a";
+  // #5 Climber of the week (biggest fees-rank rise vs last week), when there is one.
+  const climberRow = d.climber
+    ? `<tr><td colspan="3" style="padding:12px 14px;border:1px solid rgba(211,100,251,0.28);border-radius:12px;background:${LILAC};">
+        <div style="font:700 11px 'Manrope',system-ui,Arial,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:${INK};">Climber of the week</div>
+        <div style="font:800 16px 'Sora',system-ui,Arial,sans-serif;color:${V};margin-top:4px;">${d.climber.name} <span style="color:${HELI};">&#9650;${d.climber.delta}</span></div>
+      </td></tr><tr><td colspan="3" style="height:12px;"></td></tr>`
+    : "";
   const grid = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 4px;">
     ${statPair(stat("Referrals sent", String(d.sent)), stat("Guarantor fees paid", String(d.paid)))}
     ${statPair(stat("Fees collected", gbp(d.fees)), stat("Sent to Paid", conversion))}
     ${statPair(stat("Deeds issued", String(d.deeds)), stat("Awaiting signature", String(d.awaiting)))}
     <tr>${stat("Top branch by fees", topBranch)}<td></td><td width="50%"></td></tr>
+    <tr><td colspan="3" style="height:12px;"></td></tr>
+    ${climberRow}
   </table>`;
   const cta = APP_URL
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:14px 0 4px;"><tr><td>
@@ -160,6 +170,18 @@ Deno.serve(async (req) => {
     const { data: rows, error: rpcErr } = await service.rpc("partner_weekly_digest", { p_start: startIso, p_end: endIso });
     if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);
     const digest = (rows ?? []) as DigestRow[];
+
+    // #5 Climber of the week: the referrer whose fees-rank rose most vs the prior
+    // 7-day window ([-14d, -7d)). One RPC for all partners; attach to each row.
+    const prevStartIso = `${shiftDate(weekStart, -14)}T00:00:00Z`;
+    const { data: climbers } = await service.rpc("partner_weekly_climbers", {
+      p_curr_start: startIso, p_curr_end: endIso, p_prev_start: prevStartIso, p_prev_end: startIso,
+    });
+    const climberByPartner = new Map<string, { name: string; delta: number }>();
+    for (const c of (climbers ?? []) as Array<{ partner_id: string; climber_name: string; climber_delta: number }>) {
+      climberByPartner.set(c.partner_id, { name: c.climber_name, delta: Number(c.climber_delta) });
+    }
+    for (const row of digest) row.climber = climberByPartner.get(row.partner_id) ?? null;
 
     // Management recipients per partner.
     const { data: mgmt } = await service.from("users").select("email, partner_id").eq("role", "management");

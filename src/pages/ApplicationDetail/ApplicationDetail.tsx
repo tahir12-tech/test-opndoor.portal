@@ -12,9 +12,10 @@
    ===================================================================== */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, canWithdraw, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, withdrawApplication, type PaymentInfo, type WithdrawReason } from '@/data';
+import { addApplicationNote, addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, canWithdraw, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getApplicationNotes, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, withdrawApplication, type AppNote, type PaymentInfo, type WithdrawReason } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
+import { parseFlexibleDate } from '@/lib/validation';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
@@ -34,13 +35,8 @@ const fmtShort = (x: Date) => `${String(x.getDate()).padStart(2, '0')} ${MONTHS[
 const fmtInput = (x: Date) => `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`;
 // Canonical activity timestamp: dd/mm/yyyy · HH:mm.
 const fmtStamp = (x: Date) => `${fmtInput(x)} · ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
-function parseInput(s: string): Date | null {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || '').trim());
-  if (!m) return null;
-  const x = new Date(+m[3], +m[2] - 1, +m[1]);
-  if (x.getDate() !== +m[1] || x.getMonth() !== +m[2] - 1) return null;
-  return x;
-}
+// #103 Accept dd/mm/yyyy as before, plus pasted ISO and month-name formats.
+const parseInput = (s: string): Date | null => parseFlexibleDate(s);
 
 interface Activity {
   color: string;
@@ -104,9 +100,11 @@ const REASON_LABEL: Record<WithdrawReason, string> = {
 
 export function ApplicationDetail() {
   const { ref } = useParams();
-  const { role } = useSession();
+  const { role, refresh, dataVersion } = useSession();
   const toast = useToast();
-  const d = useMemo(() => getApplicationDetail(ref ?? null), [ref]);
+  // #10 dataVersion is a memo dep so `d` recomputes after a mutation + refresh()
+  // re-hydrates the working copies — the single source of truth for every surface.
+  const d = useMemo(() => getApplicationDetail(ref ?? null), [ref, dataVersion]);
   usePageMeta('applications', 'Application detail', ['Home', 'Applications', d.ref]);
 
   const [currentStart, setCurrentStart] = useState<Date>(d.tenancyStartDate);
@@ -136,9 +134,11 @@ export function ApplicationDetail() {
   const [wReason, setWReason] = useState<WithdrawReason | ''>('');
   const [wNote, setWNote] = useState('');
   const [withdrawBusy, setWithdrawBusy] = useState(false);
-  // Optimistic local reflection: the memoised detail (d) is not re-fetched, so a
-  // successful withdrawal is mirrored here to flip the status/actions immediately.
-  const [withdrewLocal, setWithdrewLocal] = useState<WithdrawReason | null>(null);
+  // #8 Operational notes (internal-only): admin + management + the owning referrer.
+  const maySeeNotes = role === 'superadmin' || role === 'management' || (role === 'referrer' && d.owner === 1);
+  const [notes, setNotes] = useState<AppNote[]>([]);
+  const [noteBody, setNoteBody] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
 
   const loadPayment = useCallback(async () => {
     if (!SUPABASE_ENABLED) return null;
@@ -164,6 +164,29 @@ export function ApplicationDetail() {
     void tick();
     return () => { cancelled = true; };
   }, [loadPayment, searchParams]);
+
+  // #8 Load the operational notes for the record, when the viewer may see them.
+  const loadNotes = useCallback(async () => {
+    if (!maySeeNotes) { setNotes([]); return; }
+    setNotes(await getApplicationNotes(d.ref));
+  }, [d.ref, maySeeNotes]);
+
+  useEffect(() => { void loadNotes(); }, [loadNotes]);
+
+  const doAddNote = async () => {
+    const body = noteBody.trim();
+    if (!body) return;
+    setNoteBusy(true);
+    try {
+      await addApplicationNote(d.ref, body);
+      setNoteBody('');
+      await loadNotes();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not add the note.');
+    } finally {
+      setNoteBusy(false);
+    }
+  };
 
   const copyLink = async () => {
     if (!paymentInfo?.paymentUrl) return;
@@ -201,14 +224,20 @@ export function ApplicationDetail() {
     try {
       await withdrawApplication(d.ref, wReason, wNote);
       const note = wNote.trim();
-      setWithdrewLocal(wReason);
       setWithdrawOpen(false);
-      // Reflect immediately in the activity feed (partner-safe: the reason shows to all).
-      setExtraActivity((prev) => [
-        { color: 'var(--ink-mute, #7a7a8c)', text: `Application withdrawn (${REASON_LABEL[wReason]})${note ? `: ${note}` : ''}.`, time: `${fmtShort(NOW)} · ${role === 'referrer' ? d.referrer : 'You'}` },
-        ...prev,
-      ]);
+      // #10 Single source of truth: re-hydrate the working copies (which bumps
+      // dataVersion), so `d`, the list row, the Sent chip and the dashboard counter
+      // all recompute to Withdrawn together. In live mode the server activity_log
+      // already carries the withdrawal entry (loadPayment pulls it in); the optimistic
+      // feed row is MOCK-ONLY, avoiding the ghost/duplicate with the wrong date+actor.
+      if (!SUPABASE_ENABLED) {
+        setExtraActivity((prev) => [
+          { color: 'var(--ink-mute, #7a7a8c)', text: `Application withdrawn (${REASON_LABEL[wReason]})${note ? `: ${note}` : ''}.`, time: `${fmtShort(NOW)} · You` },
+          ...prev,
+        ]);
+      }
       toast('Application withdrawn.');
+      await refresh();
       void loadPayment();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not withdraw the application.');
@@ -291,28 +320,27 @@ export function ApplicationDetail() {
 
   // ---- payment display (Stripe, real mode) ----
   const pi = paymentInfo;
-  // #2 A withdrawn application collects no payment: it is neither Paid nor Awaiting.
-  // (Its status is 'withdrawn', which would otherwise satisfy `pi.status !== 'sent'`.)
-  // Also honour the optimistic local withdrawal (withdrewLocal), so the card never
-  // renders "Awaiting payment" with a live Resend button in the window before the
-  // payment info reloads.
-  const payWithdrawn = pi?.status === 'withdrawn' || withdrewLocal != null;
+  // ---- #2/#13 terminal (withdrawn / expired) state — single source of truth is
+  // d.status, which the memo recomputes after refresh() (no optimistic shadow). ----
+  const owned = d.owner === 1;
+  const isWithdrawn = d.status === 'withdrawn';
+  const isExpired = d.status === 'expired';
+  const isTerminal = isWithdrawn || isExpired;
+  const withdrawnReason = d.withdrawnReason;
+  // A withdrawn/expired application collects no payment: neither Paid nor Awaiting.
+  const payWithdrawn = pi?.status === 'withdrawn' || pi?.status === 'expired' || isTerminal;
   const payRefunded = pi?.paymentState === 'refunded';
-  const payPaid = !!pi && !payRefunded && !payWithdrawn && (pi.paymentState === 'paid' || (pi.status !== 'sent' && pi.status !== 'withdrawn'));
+  const payPaid = !!pi && !payRefunded && !payWithdrawn && (pi.paymentState === 'paid' || (pi.status !== 'sent' && pi.status !== 'withdrawn' && pi.status !== 'expired'));
   const payAwaiting = !!pi && !payPaid && !payRefunded && !payWithdrawn;
   // #94 The card status line must tier like the feed: non-admins never see the
   // internal "Redirected to ... (test mode)" row (filtered here), and the business
   // message (which names the actor) is rendered as its partner-safe label below.
   const lastEmailLog = (isAdmin ? pi?.log : pi?.log?.filter((l) => l.visibility !== 'internal'))?.find((l) => l.kind.startsWith('payment_email'));
 
-  // ---- #2 withdrawal state ----
-  const owned = d.owner === 1;
-  const isWithdrawn = d.status === 'withdrawn' || withdrewLocal != null;
-  const withdrawnReason = withdrewLocal ?? d.withdrawnReason;
   // Withdraw is offered only at Sent, before payment, to the owner / management / admin.
-  const showWithdraw = canWithdraw(role, d.status, owned) && !isWithdrawn;
-  const pillVariant: PillVariant = isWithdrawn ? 'muted' : (d.status === 'withdrawn' ? 'muted' : d.status);
-  const statusLabel = isWithdrawn ? 'Withdrawn' : d.statusLabel;
+  const showWithdraw = canWithdraw(role, d.status, owned) && !isTerminal;
+  const pillVariant: PillVariant = d.status === 'withdrawn' || d.status === 'expired' ? 'muted' : d.status;
+  const statusLabel = d.statusLabel;
 
   // ---- amend permission + context ----
   const PAYMENT = d.paymentDate;
@@ -322,8 +350,8 @@ export function ApplicationDetail() {
   // re-notification. It needs an explicit consequence confirmation before saving.
   const executed = d.status === 'deed' || paymentInfo?.deedState === 'executed';
   // Who may amend: Sent -> any viewing role (Referrer only their own); Paid/Deed -> Management + opndoor admin.
-  // A withdrawn application is terminal: no amend (or any other action) is offered.
-  const canAmend = !isWithdrawn && canAmendTenancyStart(role, d.status, owned, paymentInfo?.deedState ?? null);
+  // A withdrawn or expired application is terminal: no amend (or other action) offered.
+  const canAmend = !isTerminal && canAmendTenancyStart(role, d.status, owned, paymentInfo?.deedState ?? null);
 
   // ---- amend validation ----
   // Any valid calendar date is allowed. We only require a real dd/mm/yyyy date
@@ -504,6 +532,15 @@ export function ApplicationDetail() {
           </div>
         </div>
       )}
+      {isExpired && (
+        <div className="rec-withdrawn">
+          <Icon name="clock" strokeWidth={2.2} />
+          <div>
+            <b>This application expired (guarantor fee unpaid 14 days after referral).</b>{' '}
+            It is excluded from conversion figures and Leagues, and receives no further reminders. A late payment automatically reinstates it to Paid.
+          </div>
+        </div>
+      )}
 
       <Card style={{ marginBottom: 18 }}>
         <CardHead title="Status timeline" sub="Sent to Paid to Deed Issued" />
@@ -560,6 +597,36 @@ export function ApplicationDetail() {
               <div className="drow"><span className="drow__k">Referrer</span><span className="drow__v">{d.referrer}</span></div>
             </CardBody>
           </Card>
+
+          {/* #8 Operational notes — internal only (opndoor admin + Management + owning
+              Referrer). Append-only; never shared with tenants or agents, never exported. */}
+          {maySeeNotes && (
+            <Card>
+              <CardHead title="Notes" sub="Internal operational notes. Not shared with tenants or agents, and never exported." />
+              <CardBody style={{ paddingTop: 8, paddingBottom: 12 }}>
+                {notes.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--ink-mute)', padding: '4px 0 10px' }}>No notes yet.</div>
+                ) : (
+                  notes.map((n) => (
+                    <div className="note-item" key={n.id}>
+                      <span className="note-item__dot" style={{ background: 'var(--heliotrope)' }} />
+                      <div>
+                        <div className="note-item__t">{n.body}</div>
+                        <div className="note-item__time">{fmtStamp(new Date(n.at))} · {n.author ?? 'System'}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label htmlFor="note-body">Add a note</label>
+                  <textarea id="note-body" rows={3} placeholder="Operational notes only, no sensitive personal data." value={noteBody} onChange={(e) => setNoteBody(e.target.value)} />
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button variant="primary" size="sm" onClick={() => void doAddNote()} disabled={noteBusy || !noteBody.trim()}><Icon name="plus" /> {noteBusy ? 'Adding…' : 'Add note'}</Button>
+                </div>
+              </CardBody>
+            </Card>
+          )}
         </div>
 
         {/* RIGHT */}
@@ -570,8 +637,10 @@ export function ApplicationDetail() {
               <CardBody style={{ paddingTop: 6, paddingBottom: 12 }}>
                 {payWithdrawn && (
                   <>
-                    <div className="pay-state pay-state--refunded"><span className="pay-dot" />Withdrawn</div>
-                    <div className="pay-note">This application was withdrawn before payment, so no guarantor fee was collected. It is excluded from conversion figures and receives no payment reminders.</div>
+                    <div className="pay-state pay-state--refunded"><span className="pay-dot" />{isExpired ? 'Expired' : 'Withdrawn'}</div>
+                    <div className="pay-note">{isExpired
+                      ? 'This application expired before payment, so no guarantor fee was collected. A late payment automatically reinstates it to Paid.'
+                      : 'This application was withdrawn before payment, so no guarantor fee was collected. It is excluded from conversion figures and receives no payment reminders.'}</div>
                   </>
                 )}
                 {payPaid && (

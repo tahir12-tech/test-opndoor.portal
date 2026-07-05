@@ -92,6 +92,42 @@ export function paymentEmailTemplate(p: {
       <a href="${p.payUrl}" style="display:inline-block;background:${HELIOTROPE};color:#ffffff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Pay the guarantor fee</a>
     </td></tr></table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">It's a one-off payment for opndoor to act as your professional guarantor, providing a Deed of Guarantee in favour of the property so your tenancy can proceed. Payment is secure and handled by Stripe.</p>
+    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">No longer need this? <a href="${p.payUrl}" style="color:${HELIOTROPE_DEEP};">Let us know</a> and we'll close it off. No payment will be taken.</p>
+    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.payUrl}</span></p>`;
+  return { subject, html: layout(subject, inner, p.intendedFor) };
+}
+
+// #2 Reminder emails at 2 / 5 / 9 days use distinct, escalating copy. Buttons point
+// at the same confirmation page. #14 carries the quiet "no longer need this" line.
+export function reminderEmailTemplate(p: {
+  title: string; lastName: string; propertyAddr: string; guaranteeRef: string;
+  amount: string; payUrl: string; intendedFor: string; day: number;
+}): { subject: string; html: string } {
+  const lead = p.day <= 2
+    ? `Just checking this reached you. Your guarantor fee for ${p.propertyAddr} is ready when you are.`
+    : p.day <= 5
+      ? `Your tenancy at ${p.propertyAddr} is waiting on the guarantor fee.`
+      : `To keep your tenancy on track, the guarantor fee needs paying. If anything is blocking you, just reply to this email and we will help.`;
+  const subject = p.day <= 2
+    ? `A quick reminder about your guarantor fee - ${p.guaranteeRef}`
+    : p.day <= 5
+      ? `Your tenancy is waiting on the guarantor fee - ${p.guaranteeRef}`
+      : `Please complete your guarantor fee to keep your tenancy on track - ${p.guaranteeRef}`;
+  const inner = `
+    <p style="margin:0 0 14px;">Dear ${p.title} ${p.lastName},</p>
+    <p style="margin:0 0 14px;">${lead}</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;border:1px solid rgba(39,29,95,0.12);border-radius:12px;">
+      <tr><td style="padding:16px 18px;">
+        <div style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:0.12em;text-transform:uppercase;color:${INK_SOFT};">Guarantor fee</div>
+        <div style="font:800 30px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};margin-top:4px;">${p.amount}</div>
+        <div style="font:400 13px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};margin-top:2px;">One month's rent. Reference ${p.guaranteeRef}.</div>
+      </td></tr>
+    </table>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;"><tr><td>
+      <a href="${p.payUrl}" style="display:inline-block;background:${HELIOTROPE};color:#ffffff;text-decoration:none;font:700 15px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;padding:13px 28px;border-radius:999px;box-shadow:0 6px 18px -8px rgba(211,100,251,0.6);">Pay the guarantor fee</a>
+    </td></tr></table>
+    <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">Payment is secure and handled by Stripe. Once paid, we send your Deed of Guarantee to sign electronically.</p>
+    <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">No longer need this? <a href="${p.payUrl}" style="color:${HELIOTROPE_DEEP};">Let us know</a> and we'll close it off. No payment will be taken.</p>
     <p style="margin:14px 0 0;font-size:12px;color:${INK_SOFT};">If the button does not work, copy this link into your browser:<br><span style="color:${HELIOTROPE_DEEP};word-break:break-all;">${p.payUrl}</span></p>`;
   return { subject, html: layout(subject, inner, p.intendedFor) };
 }

@@ -129,8 +129,14 @@ Deno.serve(async (req) => {
     }).eq("id", appId);
     await service.from("activity_log").insert({ application_id: appId, kind: "referral_created", message: "Referral created and sent to the tenant.", actor });
 
+    // #1 The payment email now points at the opndoor-hosted confirmation page
+    // (/pay?token=...), not the raw Stripe URL. The page's Pay button mints a fresh
+    // checkout session. utm_source tags the touch (initial send).
+    const { data: pageToken } = await service.rpc("mint_payment_page_token", { p_ref: ref });
+    const payUrl = pageToken ? `${origin}/pay?token=${pageToken}&utm_source=initial` : session.url!;
+
     // Branded payment email (redirected to the review address in test mode).
-    const tpl = paymentEmailTemplate({ title: tenantTitle, lastName: tenantLast, propertyAddr, guaranteeRef: ref, amount: amountGBP, payUrl: session.url!, intendedFor: tenantEmail });
+    const tpl = paymentEmailTemplate({ title: tenantTitle, lastName: tenantLast, propertyAddr, guaranteeRef: ref, amount: amountGBP, payUrl, intendedFor: tenantEmail });
     const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html });
     // Partner-safe business message; the test-mode redirect target stays admin-only
     // (a separate internal entry), so no partner-facing surface exposes the review

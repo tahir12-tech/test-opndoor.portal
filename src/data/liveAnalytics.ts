@@ -23,7 +23,7 @@
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import type { LeagueRow, LeagueView, PartnerScope, Period, Role } from './types';
 import { ALL_PARTNERS } from './types';
-import { allFull, guaranteeExpiry, isHydrated, type FullApp } from './applicationsService';
+import { allFull, findRecord, guaranteeExpiry, isHydrated, type FullApp } from './applicationsService';
 import { getPartners, partnerName } from './partnersService';
 import { contactForApplication } from './orgService';
 import { periodRange, scopeFull, inRange } from './paymentMetrics';
@@ -80,10 +80,10 @@ export interface LiveAgg {
 /** Aggregate the scoped set for a period (event-in-period money/counts + current-state ops). */
 export function liveAggregate(role: Role, scope: PartnerScope, period: Period): LiveAgg {
   const [start, end] = periodRange(period);
-  // #2 Withdrawn is terminal and pre-payment: it leaves the funnel entirely, so
-  // it is excluded from every count, conversion denominator, ops metric and
-  // average here (never inside Sent, never in stuck-at-Sent).
-  const set = scopeFull(allFull(), role, scope).filter((x) => !x.withdrawn);
+  // #2/#13 Withdrawn and Expired are terminal and pre-payment: they leave the
+  // funnel entirely, so they are excluded from every count, conversion denominator,
+  // ops metric and average here (never inside Sent, never in stuck-at-Sent).
+  const set = scopeFull(allFull(), role, scope).filter((x) => !x.withdrawn && !x.expired);
   const a: LiveAgg = {
     sent: 0, paid: 0, deed: 0, feesGross: 0, refundValue: 0, refundCount: 0, feesNet: 0,
     guaranteed: 0, partnerCommNet: 0, agentCommNet: 0, partnerCommExcl: 0, agentCommExcl: 0,
@@ -220,9 +220,9 @@ function groupRows(set: FullApp[], key: GroupKey, start: Date, end: Date): Leagu
     return g;
   };
   for (const app of set) {
-    // #2 Withdrawn is terminal and excluded from every league/volume figure
-    // (refs, conversion, fees), matching liveAggregate's funnel exclusion.
-    if (app.withdrawn) continue;
+    // #2/#13 Withdrawn and Expired are terminal and excluded from every league/
+    // volume figure (refs, conversion, fees), matching liveAggregate's exclusion.
+    if (app.withdrawn || app.expired) continue;
     const k = keyOf(app, key, monthLabel);
     if (!k) continue;
     const r = { partner: app.partnerRate, agent: app.agentRate };
@@ -243,7 +243,7 @@ function groupRows(set: FullApp[], key: GroupKey, start: Date, end: Date): Leagu
   const rows = [...map.values()].map(emit);
   // Months sort chronologically (most recent first); entities sort by fees.
   if (key === 'month') return rows.sort((x, y) => monthOrder(y.name) - monthOrder(x.name));
-  return rows.sort((x, y) => y.fees - x.fees || y.refs - x.refs);
+  return rows.sort((x, y) => y.fees - x.fees || y.refs - x.refs || x.name.localeCompare(y.name)); // #104 fees, then refs, then name
 }
 
 function monthOrder(label: string): number {
@@ -291,7 +291,7 @@ export function liveMonths(role: Role, scope: PartnerScope): MonthRow[] {
   const idx = (d: Date) => d.getFullYear() * 12 + d.getMonth();
   const at = (d: Date) => months.find((x) => x.key === idx(d));
   for (const app of set) {
-    if (app.withdrawn) continue; // #2 terminal: excluded from trailing-12-month volume/fees
+    if (app.withdrawn || app.expired) continue; // #2/#13 terminal: excluded from trailing-12-month volume/fees
     if (app.sentAt && idx(app.sentAt) >= lo && idx(app.sentAt) <= hi) { const m = at(app.sentAt); if (m) m.refs += 1; }
     if (app.paidAt && idx(app.paidAt) >= lo && idx(app.paidAt) <= hi) {
       const m = at(app.paidAt);
@@ -302,12 +302,26 @@ export function liveMonths(role: Role, scope: PartnerScope): MonthRow[] {
   return months.map((m) => ({ label: m.label, refs: m.refs, fees: Math.round(m.fees), deeds: m.deeds, comm: Math.round(m.comm) }));
 }
 
+/* ---------- Tenant initials (privacy-preserving) ----------
+   Settlement statements identify the tenant by INITIALS ONLY, never the full
+   name. FullApp carries no tenant name, so the initials are read from the
+   pseudonymised application record (findRecord) — the same source the live
+   bordereau uses. Empty string when no record/name is resolvable (e.g. mock mode),
+   so the statement falls back to the guarantee reference alone. */
+function nameInitials(n: string): string {
+  return n.trim().split(/\s+/).map((p) => p[0] ?? '').slice(0, 2).join('').toUpperCase();
+}
+function tenantInitialsFor(ref: string): string {
+  const rec = findRecord(ref);
+  return rec?.name ? nameInitials(rec.name) : '';
+}
+
 /* ---------- Partner commission settlement ----------
    Commission accrues on the payment date (calendar-month buckets, matching the
    per-application net-of-refunds rule) and is settled on the 15th of the
    following month. This answers, for the prior calendar month, exactly what is
    payable to each partner and which applications make it up. */
-export interface SettlementApp { ref: string; agency: string; branch: string; paidAt: Date; rent: number; commission: number; }
+export interface SettlementApp { ref: string; agency: string; branch: string; paidAt: Date; rent: number; commission: number; tenantInitials: string; }
 export interface PartnerSettlement { partner: string; partnerName: string; commission: number; apps: SettlementApp[]; }
 export interface CommissionSettlement { monthLabel: string; settlementDate: Date; partners: PartnerSettlement[]; }
 
@@ -328,7 +342,7 @@ export function getCommissionSettlement(role: Role, scope: PartnerScope): Commis
     let ps = byPartner.get(a.partner);
     if (!ps) { ps = { partner: a.partner, partnerName: partnerName(a.partner), commission: 0, apps: [] }; byPartner.set(a.partner, ps); }
     ps.commission += commission;
-    ps.apps.push({ ref: a.ref, agency: a.agency, branch: a.branch, paidAt: a.paidAt!, rent: a.rent, commission });
+    ps.apps.push({ ref: a.ref, agency: a.agency, branch: a.branch, paidAt: a.paidAt!, rent: a.rent, commission, tenantInitials: tenantInitialsFor(a.ref) });
   }
   const partners = [...byPartner.values()].sort((x, y) => y.commission - x.commission);
   partners.forEach((p) => p.apps.sort((x, y) => y.commission - x.commission));
@@ -415,7 +429,7 @@ export function getAgentCommissionSettlement(role: Role, scope: PartnerScope): A
     let ag = byAgency.get(key);
     if (!ag) { ag = { agency: a.agency || '(unknown agency)', partner: a.partner, partnerName: partnerName(a.partner), commission: 0, apps: [] }; byAgency.set(key, ag); }
     ag.commission += commission;
-    ag.apps.push({ ref: a.ref, agency: a.agency, branch: a.branch, paidAt: a.paidAt!, rent: a.rent, commission });
+    ag.apps.push({ ref: a.ref, agency: a.agency, branch: a.branch, paidAt: a.paidAt!, rent: a.rent, commission, tenantInitials: tenantInitialsFor(a.ref) });
   }
   const agencies = [...byAgency.values()].sort((x, y) => y.commission - x.commission);
   agencies.forEach((a) => a.apps.sort((x, y) => y.commission - x.commission));

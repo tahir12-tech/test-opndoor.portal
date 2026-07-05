@@ -18,6 +18,52 @@ export function parseISODate(s: string): Date | null {
   if (d.getFullYear() !== +m[1] || d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[3]) return null;
   return d;
 }
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** Build a Date only if the parts form a real calendar date (rejects 31/02 etc.). */
+function realDate(y: number, mIdx: number, day: number): Date | null {
+  if (y < 1000 || mIdx < 0 || mIdx > 11 || day < 1 || day > 31) return null;
+  const d = new Date(y, mIdx, day);
+  return (d.getFullYear() === y && d.getMonth() === mIdx && d.getDate() === day) ? d : null;
+}
+/**
+ * #103 Tolerant date parser for pasted values from external systems (Rightmove's
+ * ops floor copy-pastes tenancy dates). Accepts, in order of preference, ISO
+ * (2026-09-01), UK numeric (01/09/2026 or 1/9/2026, also with '-' or '.'), and
+ * month-name forms (1 Sep 2026, 1 September 2026, Sep 1 2026). UK convention:
+ * numeric d/m/y is day-first. Returns a Date at local midnight, or null.
+ */
+export function parseFlexibleDate(input: string): Date | null {
+  const s = (input || '').trim();
+  if (!s) return null;
+  // ISO yyyy-mm-dd
+  const iso = parseISODate(s);
+  if (iso) return iso;
+  // Numeric d/m/y (or d-m-y, d.m.y), day-first
+  const num = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/.exec(s);
+  if (num) {
+    let y = +num[3];
+    if (y < 100) y += y < 70 ? 2000 : 1900; // 2-digit year window
+    return realDate(y, +num[2] - 1, +num[1]);
+  }
+  // Month-name forms: "1 Sep 2026" / "1 September 2026" / "Sep 1 2026" / "September 1, 2026"
+  const cleaned = s.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  const dmy = /^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$/.exec(cleaned);
+  const mdy = /^([A-Za-z]{3,})\s+(\d{1,2})\s+(\d{4})$/.exec(cleaned);
+  if (dmy) {
+    const mIdx = MONTHS.indexOf(dmy[2].slice(0, 3).toLowerCase());
+    return mIdx >= 0 ? realDate(+dmy[3], mIdx, +dmy[1]) : null;
+  }
+  if (mdy) {
+    const mIdx = MONTHS.indexOf(mdy[1].slice(0, 3).toLowerCase());
+    return mIdx >= 0 ? realDate(+mdy[3], mIdx, +mdy[2]) : null;
+  }
+  return null;
+}
+/** yyyy-mm-dd (local) from a Date, for native date-input values. */
+export function toISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function addYears(d: Date, n: number): Date {
   return new Date(d.getFullYear() + n, d.getMonth(), d.getDate());
 }

@@ -26,7 +26,7 @@ import { contactForApplication } from './orgService';
 import { getLeague } from './leagueService';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { periodRange as realPeriodRange, scopeFull, basisInPeriod, inRange } from './paymentMetrics';
-import { liveAvailable, liveAggregate, liveVolume, liveMonths, getCommissionSettlement, getAgentCommissionSettlement, livePartnerBreakdown } from './liveAnalytics';
+import { liveAvailable, liveAggregate, liveVolume, liveMonths, getCommissionSettlement, getAgentCommissionSettlement, livePartnerBreakdown, type SettlementApp } from './liveAnalytics';
 // Type-only import: building the document specs needs no runtime code, so the
 // heavy xlsx library is not pulled into the main bundle. It is dynamically
 // imported in exportBranded, on demand, when an export is actually run.
@@ -586,8 +586,8 @@ function buildRealApplicationDoc(role: Role, period: Period, basis: ExportBasis,
   // #2 Withdrawn is terminal and out of the funnel: exclude it so the referred/
   // activity bases reconcile with the performance export (whose Sent excludes
   // withdrawn) and a withdrawn row is never rendered as "Awaiting payment".
-  const apps = scopeFull(allFull(), role, scopeFor(role)).filter((a) => !a.withdrawn && basisInPeriod(a, basis, start, end));
-  const STATUS: Record<FullApp['status'], string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn' };
+  const apps = scopeFull(allFull(), role, scopeFor(role)).filter((a) => !a.withdrawn && !a.expired && basisInPeriod(a, basis, start, end));
+  const STATUS: Record<FullApp['status'], string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn', expired: 'Expired' };
 
   const columns: Column[] = [
     { header: 'Partner', type: 'text' },
@@ -771,6 +771,158 @@ export function buildLeagueDoc(role: Role, scope: PartnerScope, partner: string,
     } as BrandedDoc,
   }));
   return { sheets, filename: `opndoor-league-${fileStamp()}.xlsx` };
+}
+
+/* =====================================================================
+   Commission statements (#6): one branded statement per payee — per partner
+   (partner commission) and per agency (agent commission) — for the current
+   settlement (prior calendar month, payable the 15th, net of refunds).
+
+   FOOTING GUARANTEE: each builder reads the SAME settlement data the dashboard
+   renders (getCommissionSettlement / getAgentCommissionSettlement, same role +
+   scope), so the statement's total EQUALS the on-screen settlement figure by
+   construction — it is the sum of the identical per-application commission the
+   dashboard sums. Tenant is shown as INITIALS ONLY (privacy).
+   ===================================================================== */
+
+/** dd/mm/yyyy HH:MM generated stamp for a statement (British, local time). */
+function dmyhm(x: Date): string {
+  return `${dmy(x)} ${pad(x.getHours())}:${pad(x.getMinutes())}`;
+}
+
+/** A deterministic statement reference from the payee id + settlement month:
+    `<prefix>-<PAYEE-SLUG>-<YYYYMM>` (e.g. STMT-RIGHTMOVE-202606). */
+function statementRef(prefix: string, payeeId: string, monthLabel: string): string {
+  const [mName, yr] = monthLabel.split(' '); // monthLabel is e.g. "June 2026"
+  const mIdx = MONTH_NAMES.indexOf(mName);
+  const yyyymm = mIdx >= 0 && yr ? `${yr}${pad(mIdx + 1)}` : monthLabel.replace(/\s+/g, '');
+  const slug = payeeId.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return `${prefix}-${slug}-${yyyymm}`;
+}
+
+/** Per-application commission lines (guarantee reference, tenant initials, paid
+    date, fee, applied rate, commission). Pence throughout (money-reconciliation
+    surface); the applied rate is derived as commission / fee (== the snapshotted
+    per-application rate, since commission = rent x rate). */
+const STATEMENT_COLS: Column[] = [
+  { header: 'Guarantee reference', type: 'text' },
+  { header: 'Tenant', type: 'text' },
+  { header: 'Paid date', type: 'text' },
+  { header: 'Fee', type: 'money2' },
+  { header: 'Rate', type: 'pct' },
+  { header: 'Commission', type: 'money2' },
+];
+
+/** The per-line rows plus a footing total row. The total commission is the sum of
+    the per-application commission, which IS the settlement's stated commission
+    (assert-equal: totalComm === settlement commission for this payee). */
+function statementRows(apps: SettlementApp[]): { rows: TableRow[]; totalFee: number; totalComm: number } {
+  let totalFee = 0;
+  let totalComm = 0;
+  const rows: TableRow[] = apps.map((ap) => {
+    totalFee += ap.rent;
+    totalComm += ap.commission;
+    const rate = ap.rent ? ap.commission / ap.rent : 0; // derived applied rate = commission / fee
+    // Tenant shown as INITIALS ONLY; the guarantee reference stands alone when unknown.
+    return [ap.ref, ap.tenantInitials || '', dmy(ap.paidAt), ap.rent, rate, ap.commission];
+  });
+  // Footing total: the blended effective rate keeps fee x rate = commission on the total line too.
+  const effRate = totalFee ? totalComm / totalFee : 0;
+  rows.push([`Total (${apps.length} application${apps.length === 1 ? '' : 's'})`, '', '', totalFee, effRate, totalComm]);
+  return { rows, totalFee, totalComm };
+}
+
+/**
+ * Partner commission statement: a single branded statement for one partner, for
+ * the current settlement month. Foots exactly to the dashboard's partner
+ * settlement (reads the same getCommissionSettlement). Tenant initials only.
+ */
+export function buildPartnerStatementDoc(role: Role, scope: PartnerScope, partnerId: string): BrandedExport {
+  const st = getCommissionSettlement(role, scope);
+  const ps = st.partners.find((p) => p.partner === partnerId);
+  const payee = ps ? ps.partnerName : partnerName(partnerId);
+  const ref = statementRef('STMT', partnerId, st.monthLabel);
+  const generated = dmyhm(new Date());
+  const blocks: BrandedDoc['blocks'] = [
+    { kind: 'section', title: 'Commission statement' },
+    {
+      kind: 'keyvalue',
+      items: [
+        { label: 'Payee (partner)', value: payee },
+        { label: 'Commission type', value: 'Partner commission' },
+        { label: 'Period (month)', value: st.monthLabel },
+        { label: 'Settlement date', value: dmy(st.settlementDate) },
+        { label: 'Statement reference', value: ref },
+        { label: 'Generated', value: generated },
+        { label: 'Currency', value: 'GBP' },
+      ],
+    },
+    { kind: 'blank' },
+    { kind: 'section', title: 'Applications (net of refunds)' },
+  ];
+  if (!ps || !ps.apps.length) {
+    blocks.push({ kind: 'keyvalue', items: [{ label: 'Payable', value: 'No partner commission accrued in the prior calendar month.' }] });
+  } else {
+    const { rows, totalComm } = statementRows(ps.apps);
+    // Reconciliation: totalComm equals ps.commission (same per-application sum the
+    // dashboard shows), so the statement foots exactly to the on-screen figure.
+    blocks.push(
+      { kind: 'table', columns: STATEMENT_COLS, rows },
+      { kind: 'blank' },
+      { kind: 'keyvalue', items: [{ label: 'Total commission payable', value: totalComm, type: 'money2' }] },
+    );
+  }
+  const metaLine = `${st.monthLabel} settlement · Payee: ${payee} · Partner commission · Reference ${ref} · Generated ${generated} · GBP`;
+  const doc: BrandedDoc = { reportName: 'Commission statement', metaLine, blocks };
+  return { sheets: [{ name: 'Statement', doc }], filename: `opndoor-statement-${ref}.xlsx` };
+}
+
+/**
+ * Agent commission statement: a single branded statement for one letting agency
+ * (identified by partner + agency, so same-named agencies under different partners
+ * never merge), for the current settlement month. Foots exactly to the dashboard's
+ * agent settlement (reads the same getAgentCommissionSettlement). Tenant initials only.
+ */
+export function buildAgentStatementDoc(role: Role, scope: PartnerScope, partner: string, agency: string): BrandedExport {
+  const st = getAgentCommissionSettlement(role, scope);
+  const ag = st.agencies.find((a) => a.partner === partner && a.agency === agency);
+  const payee = ag ? ag.agency : agency;
+  const partnerLabel = ag ? ag.partnerName : partnerName(partner);
+  const ref = statementRef('STMT-AG', `${partner} ${agency}`, st.monthLabel);
+  const generated = dmyhm(new Date());
+  const blocks: BrandedDoc['blocks'] = [
+    { kind: 'section', title: 'Commission statement' },
+    {
+      kind: 'keyvalue',
+      items: [
+        { label: 'Payee (agency)', value: payee },
+        { label: 'Partner', value: partnerLabel },
+        { label: 'Commission type', value: 'Agent commission' },
+        { label: 'Period (month)', value: st.monthLabel },
+        { label: 'Settlement date', value: dmy(st.settlementDate) },
+        { label: 'Statement reference', value: ref },
+        { label: 'Generated', value: generated },
+        { label: 'Currency', value: 'GBP' },
+      ],
+    },
+    { kind: 'blank' },
+    { kind: 'section', title: 'Applications (net of refunds)' },
+  ];
+  if (!ag || !ag.apps.length) {
+    blocks.push({ kind: 'keyvalue', items: [{ label: 'Payable', value: 'No agent commission accrued in the prior calendar month.' }] });
+  } else {
+    const { rows, totalComm } = statementRows(ag.apps);
+    // Reconciliation: totalComm equals ag.commission (same per-application sum the
+    // dashboard shows), so the statement foots exactly to the on-screen figure.
+    blocks.push(
+      { kind: 'table', columns: STATEMENT_COLS, rows },
+      { kind: 'blank' },
+      { kind: 'keyvalue', items: [{ label: 'Total commission payable', value: totalComm, type: 'money2' }] },
+    );
+  }
+  const metaLine = `${st.monthLabel} settlement · Payee: ${payee} (${partnerLabel}) · Agent commission · Reference ${ref} · Generated ${generated} · GBP`;
+  const doc: BrandedDoc = { reportName: 'Commission statement', metaLine, blocks };
+  return { sheets: [{ name: 'Statement', doc }], filename: `opndoor-statement-${ref}.xlsx` };
 }
 
 function bxIssuedCount(y: number, m0: number): number {

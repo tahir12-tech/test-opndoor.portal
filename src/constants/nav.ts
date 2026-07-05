@@ -50,6 +50,7 @@ export const NAV: NavGroup[] = [
     items: [
       { id: 'opteam', label: 'opndoor team', to: '/users?team=opndoor', icon: 'users', roles: ['superadmin'] },
       { id: 'reconcile', label: 'Reconciliation', to: '/reconciliation', icon: 'reconcile', roles: ['superadmin'], badge: 'reconcile' },
+      { id: 'health', label: 'Health', to: '/health', icon: 'shield', roles: ['superadmin'] },
     ],
   },
 ];

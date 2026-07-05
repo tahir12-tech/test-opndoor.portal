@@ -13,6 +13,7 @@ import { ForgotPassword } from '@/pages/ForgotPassword/ForgotPassword';
 import { ResetPassword } from '@/pages/auth/ResetPassword';
 import { PaymentConfirmed } from '@/pages/Pay/PaymentConfirmed';
 import { PaymentRetry } from '@/pages/Pay/PaymentRetry';
+import { PayLanding } from '@/pages/Pay/PayLanding';
 import { TenancyCorrection } from '@/pages/TenancyCorrection/TenancyCorrection';
 import { Dashboard } from '@/pages/Dashboard/Dashboard';
 import { League } from '@/pages/League/League';
@@ -24,6 +25,7 @@ import { OrgManagement } from '@/pages/OrgManagement/OrgManagement';
 import { PartnerManagement } from '@/pages/PartnerManagement/PartnerManagement';
 import { UserManagement } from '@/pages/UserManagement/UserManagement';
 import { Reconciliation } from '@/pages/Reconciliation/Reconciliation';
+import { Health } from '@/pages/Health/Health';
 import { Help } from '@/pages/Help/Help';
 
 export function App() {
@@ -38,7 +40,9 @@ export function App() {
       {/* Public: the team-invite link lands here to set a password, then TOTP. */}
       <Route path="/accept-invite" element={<ResetPassword mode="invite" />} />
 
-      {/* Public, unauthenticated tenant payment pages (post-Stripe redirect). */}
+      {/* Public, unauthenticated tenant payment pages. */}
+      {/* #1 The tokenised confirmation page the payment email + reminders link to. */}
+      <Route path="/pay" element={<PayLanding />} />
       <Route path="/pay/confirmed" element={<PaymentConfirmed />} />
       <Route path="/pay/retry" element={<PaymentRetry />} />
       {/* Public: agent-reported tenancy-start correction, from the deed email (#81). */}
@@ -65,6 +69,7 @@ export function App() {
         <Route element={<RequireRole roles={['superadmin']} />}>
           <Route path="/partners" element={<PartnerManagement />} />
           <Route path="/reconciliation" element={<Reconciliation />} />
+          <Route path="/health" element={<Health />} />
         </Route>
       </Route>
       </Route>

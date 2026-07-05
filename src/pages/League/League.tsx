@@ -18,9 +18,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ALL_PARTNERS, buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, getPeriods,
+  ALL_PARTNERS, buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, getPeriods, partnerName,
   getReferrerLeague, getReferrerLeaderboardMode, setReferrerLeaderboardMode,
-  type LeaderboardMode, type LeagueRow, type LeagueView, type ReferrerBoard,
+  type LeaderboardMode, type LeagueRow, type LeagueView, type ReferrerBoard, type Period,
 } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -85,10 +85,26 @@ export function League() {
   return role === 'referrer' ? <ReferrerLeagueView /> : <FullLeagueView />;
 }
 
+// #5 The League always opens on This calendar month (all roles), independent of
+// the dashboard's period selection, then the user can change it locally.
+function useLeaguePeriod(): [Period, (id: string) => void] {
+  const periods = getPeriods();
+  const [period, setPeriodState] = useState<Period>(() => periods.find((p) => p.id === 'thismonth') ?? periods[0]);
+  return [period, (id: string) => setPeriodState(periods.find((p) => p.id === id) ?? periods[0])];
+}
+
+// #5 Week-over-week rank movement indicator (▲n up / ▼n down / – held / · new).
+function Movement({ m }: { m: number | null }) {
+  if (m == null) return <span className="lt-move lt-move--flat" title="New this period">·</span>;
+  if (m === 0) return <span className="lt-move lt-move--flat" title="No change">–</span>;
+  const up = m > 0;
+  return <span className={`lt-move ${up ? 'lt-move--up' : 'lt-move--down'}`} title={`${up ? 'Up' : 'Down'} ${Math.abs(m)} since last week`}>{up ? '▲' : '▼'}{Math.abs(m)}</span>;
+}
+
 // ---- Referrer view (#79): own-partner board, positions + counts (+ fees when Full). ----
 function ReferrerLeagueView() {
   usePageMeta('league', 'League table', ['Home', 'League table']);
-  const { period, setPeriod } = useSession();
+  const [period, setPeriod] = useLeaguePeriod();
   const [board, setBoard] = useState<ReferrerBoard | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -142,6 +158,7 @@ function ReferrerLeagueView() {
               <thead>
                 <tr>
                   <th className="num" style={{ width: 44 }}>#</th>
+                  <th style={{ width: 56 }} title="Movement since the same table 7 days ago">7d</th>
                   <th>Referrer</th>
                   <th className="num">Referrals</th>
                   {showFees && <th className="num">Fees collected</th>}
@@ -151,6 +168,7 @@ function ReferrerLeagueView() {
                 {rows.map((r, i) => (
                   <tr key={`${r.name}-${i}`} className={r.self ? 'is-self' : ''}>
                     <td className="num"><span className={`rank${i < 3 ? ' top' : ''}`}>{i + 1}</span></td>
+                    <td><Movement m={r.movement} /></td>
                     <td><div className="lt-name">{r.name}{r.self && <span className="lt-partner">You</span>}</div></td>
                     <td className="num">{r.refs.toLocaleString('en-GB')}</td>
                     {showFees && <td className="num">{fmtBig(r.fees)}</td>}
@@ -172,7 +190,8 @@ function ReferrerLeagueView() {
 // ---- Full view (management / opndoor admin): unchanged tables + the #79 setting. ----
 function FullLeagueView() {
   usePageMeta('league', 'League tables', ['Home', 'League tables']);
-  const { role, partnerScope, period, setPeriod, refresh } = useSession();
+  const { role, partnerScope, refresh } = useSession();
+  const [period, setPeriod] = useLeaguePeriod();
   const toast = useToast();
   const [params] = useSearchParams();
 
@@ -254,7 +273,9 @@ function FullLeagueView() {
 
       <div className="page-head">
         <div>
-          <Eyebrow>Performance · {period.label}</Eyebrow>
+          {/* #100 Name the active scope truthfully (the table is scoped by the
+              global partner selection even when the in-page selector is hidden). */}
+          <Eyebrow>Performance · {period.label}{partner ? ` · ${partnerName(partner)}` : partnerScope !== ALL_PARTNERS ? ` · ${partnerName(partnerScope)}` : ''}</Eyebrow>
           <h1 className="page-head__title" style={{ marginTop: 10 }}>League tables</h1>
           <p className="page-head__sub">Every agency, branch and referrer ranked in full. Search, sort by any metric, and page through the whole book. The dashboard shows the top ten; this is the complete list.</p>
         </div>

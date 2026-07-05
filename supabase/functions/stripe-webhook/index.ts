@@ -20,6 +20,7 @@ import Stripe from "npm:stripe@^17";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateDeed } from "../_shared/pandadoc.ts";
 import { deliverRefund } from "../_shared/refundEmail.ts";
+import { deliverPaymentReceipt } from "../_shared/paymentReceiptEmail.ts";
 
 Deno.serve(async (req) => {
   const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
@@ -54,13 +55,42 @@ Deno.serve(async (req) => {
       const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null;
       const amount = (s.amount_total ?? 0) / 100;
       if (appId) {
-        await service.rpc("apply_stripe_payment", { p_application_id: appId, p_payment_intent: pi, p_amount: amount, p_session_id: s.id });
+        // The privileged transition. On a transient DB error supabase-js returns an
+        // error object rather than throwing, so check it: delete the dedup row (so a
+        // Stripe retry re-processes rather than being deduped to a 200) and throw,
+        // which the catch below turns into a 500 + ops alert. Never continue past a
+        // failed transition to log/email a payment that did not actually apply.
+        const { error: payErr } = await service.rpc("apply_stripe_payment", { p_application_id: appId, p_payment_intent: pi, p_amount: amount, p_session_id: s.id });
+        if (payErr) {
+          await service.from("stripe_events").delete().eq("id", event.id);
+          throw new Error(`apply_stripe_payment failed: ${payErr.message}`);
+        }
         await service.from("stripe_events").update({ application_id: appId }).eq("id", event.id);
-        await service.from("activity_log").insert({ application_id: appId, kind: "payment_received", message: `Guarantor fee paid (£${amount.toLocaleString("en-GB")}) via Stripe.`, actor: "Stripe" });
-        // On the new Paid transition, generate the deed and send it to the tenant to sign.
-        const { data: appRow } = await service.from("applications").select("status, deed_state").eq("id", appId).maybeSingle();
-        if (appRow?.status === "paid" && !appRow?.deed_state) {
-          await generateDeed(service, appId);
+        const { data: appRow } = await service.from("applications")
+          .select("status, deed_state, guarantee_ref, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode")
+          .eq("id", appId).maybeSingle();
+        // Idempotent post-payment side-effects, run only on the FIRST completed
+        // payment for this application (a second DISTINCT Checkout event must not
+        // re-log/re-generate/re-email). A prior 'payment_received' row is the marker.
+        // A staff-withdrawn anomaly leaves status != 'paid', so nothing fires here.
+        const { data: priorPaid } = await service.from("activity_log").select("id").eq("application_id", appId).eq("kind", "payment_received").limit(1);
+        if (appRow?.status === "paid" && !priorPaid?.length) {
+          await service.from("activity_log").insert({ application_id: appId, kind: "payment_received", message: `Guarantor fee paid (£${amount.toLocaleString("en-GB")}) via Stripe.`, actor: "Stripe" });
+          // Generate the deed (fresh or #13 reinstated) unless one already exists.
+          if (!appRow.deed_state) await generateDeed(service, appId);
+          // #3 Tenant payment receipt.
+          if (appRow.tenant_email) {
+            const amountGBP = `£${amount.toLocaleString("en-GB", { minimumFractionDigits: amount % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
+            await deliverPaymentReceipt(service, {
+              appId,
+              tenantEmail: appRow.tenant_email,
+              title: appRow.tenant_title ?? "",
+              lastName: appRow.tenant_last_name ?? "",
+              propertyAddr: [appRow.prop_addr1, appRow.prop_postcode].filter(Boolean).join(", "),
+              amount: amountGBP,
+              guaranteeRef: appRow.guarantee_ref,
+            });
+          }
         }
       }
     } else if (event.type === "charge.refunded") {

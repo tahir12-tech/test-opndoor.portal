@@ -234,6 +234,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     partner: slugOfApp(a),
     refunded: a.payment_state === 'refunded',
     withdrawn: a.status === 'withdrawn',
+    expired: a.status === 'expired',
     awaitingSignature: a.deed_state === 'awaiting_tenant',
   }));
 
@@ -274,6 +275,7 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     withdrawn: a.status === 'withdrawn',
     withdrawnReason: (a.withdrawn_reason ?? null) as FullApp['withdrawnReason'],
     withdrawnNote: a.withdrawn_note ?? null,
+    expired: a.status === 'expired',
   }));
 
   const recordsOut: AppRecord[] = apps.map((a) => ({

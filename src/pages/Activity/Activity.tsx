@@ -29,13 +29,14 @@ const dmy = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.get
 // dd/mm/yyyy · HH:mm — used for real, activity_log-sourced events.
 const dmyTime = (d: Date) => `${dmy(d)} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-const KIND_DOT: Record<ActivityKind, string> = { sent: 'var(--sent)', paid: 'var(--paid)', deed: 'var(--deed)', withdrawn: 'var(--ink-mute, #7a7a8c)' };
+const KIND_DOT: Record<ActivityKind, string> = { sent: 'var(--sent)', paid: 'var(--paid)', deed: 'var(--deed)', withdrawn: 'var(--ink-mute, #7a7a8c)', expired: 'var(--ink-mute, #7a7a8c)' };
 const BAND_PILL: Record<ExpiryBand, PillVariant> = { soon: 'danger', warn: 'warn', notice: 'sent', later: 'muted' };
 
 function activityText(kind: ActivityKind, tenant: string) {
   if (kind === 'paid') return <>Guarantor fee paid for <b>{tenant}</b></>;
   if (kind === 'deed') return <>Deed of Guarantee issued for <b>{tenant}</b></>;
   if (kind === 'withdrawn') return <>Referral withdrawn for <b>{tenant}</b></>;
+  if (kind === 'expired') return <>Referral expired for <b>{tenant}</b></>;
   return <>Referral sent for <b>{tenant}</b></>;
 }
 

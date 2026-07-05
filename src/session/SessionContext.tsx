@@ -53,6 +53,9 @@ interface SessionValue {
   signOut: () => Promise<void>;
   /** Re-load the RLS-scoped datasets after a mutation (no-op in mock mode). */
   refresh: () => Promise<void>;
+  /** Bumped whenever the working copies re-hydrate; use in memo deps to recompute
+      derived views (e.g. an application detail) after a mutation + refresh(). */
+  dataVersion: number;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -178,6 +181,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setProfile(prof);
       setRole(prof.role);
       if (hydratedFor.current !== userId) {
+        // #100 A seat change within the same runtime (a DIFFERENT user resolves
+        // without an in-app sign-out, e.g. the auth token was swapped) must not
+        // inherit the prior admin's persisted partner scope. Reset to All. (A
+        // first-ever hydration has hydratedFor.current === null, so a same-user
+        // reload keeps their own saved selection.)
+        if (hydratedFor.current !== null && hydratedFor.current !== userId) {
+          persistPartner(ALL_PARTNERS);
+          setSelectedPartnerState(ALL_PARTNERS);
+        }
         // Start hydration exactly once per user; concurrent resolves reuse and
         // await the same promise. Critically, 'ready' is only set AFTER this
         // resolves, so the app never renders the mock working copies in live mode.
@@ -230,6 +242,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       mfaTrustedThisRuntime = false;
       stopHeartbeat();
       clearSessionAlive();
+      // #100 Reset the partner scope to All on sign-out. It is persisted in
+      // localStorage, so without this the next seat (a different opndoor admin
+      // signing in) inherits the prior admin's scope. Clear BOTH the persisted
+      // value and the React state, since init re-reads localStorage.
+      persistPartner(ALL_PARTNERS);
+      setSelectedPartnerState(ALL_PARTNERS);
       await authService.signOut();
       setProfile(null);
       setStatus('signedOut');
@@ -239,8 +257,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (SUPABASE_ENABLED && hydratedFor.current) {
       await hydrateFromSupabase(hydratedFor.current);
-      setDataVersion((v) => v + 1); // re-read the refreshed working copies
     }
+    // #10 Always bump dataVersion so memoised derived views (e.g. the application
+    // detail) recompute after a mutation. In mock/demo mode there is nothing to
+    // re-hydrate, but the working copies were mutated in place, so the bump is what
+    // makes every surface reflect the change.
+    setDataVersion((v) => v + 1);
   }, []);
 
   // Expose the role on <html> for role-scoped CSS (mirrors portal.js).
@@ -255,7 +277,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     : ROLES[role];
 
   const value = useMemo<SessionValue>(
-    () => ({ role, setRole, user, currentUserId: profile?.userId ?? null, partnerScope, selectedPartner, setSelectedPartner, period, setPeriod, status, authError, markMfaVerified, signOut, refresh }),
+    () => ({ role, setRole, user, currentUserId: profile?.userId ?? null, partnerScope, selectedPartner, setSelectedPartner, period, setPeriod, status, authError, markMfaVerified, signOut, refresh, dataVersion }),
     // dataVersion is intentionally a dep: bumping it after (re-)hydration changes
     // the context identity so consumers re-read the refreshed working copies.
     [role, setRole, user, profile, partnerScope, selectedPartner, setSelectedPartner, period, setPeriod, status, authError, markMfaVerified, signOut, refresh, dataVersion],

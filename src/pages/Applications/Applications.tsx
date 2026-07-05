@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode 
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   agencyNamesForScope, agencyOfBranch, branchNamesForScope, countByStatus, getApplications, getPartners,
-  partnerName, type Status,
+  partnerName, ALL_PARTNERS, type Status,
 } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -25,7 +25,7 @@ import { Pager } from '@/components/ui/Pager';
 import './Applications.css';
 
 const PAGE_SIZE = 20;
-const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn' };
+const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn', expired: 'Expired' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtDate(iso: string): string {
   const d = new Date(iso);
@@ -63,12 +63,12 @@ export function Applications() {
 
   // Initial filters from the drill-through URL (?agency= / ?branch= / ?status= / ?deed=).
   // 'refunded' and 'awaiting' are status chips that cross-cut Paid (status stays Paid).
-  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn'>(() => {
+  const [status, setStatus] = useState<Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn' | 'expired'>(() => {
     if (params.get('deed') === 'awaiting') return 'awaiting';
     // #93 delivery-failed is management + opndoor admin only.
     if (role !== 'referrer' && params.get('deed') === 'delivery-failed') return 'delivery-failed';
     const s = params.get('status');
-    return s === 'sent' || s === 'paid' || s === 'deed' || s === 'refunded' || s === 'withdrawn' ? s : 'all';
+    return s === 'sent' || s === 'paid' || s === 'deed' || s === 'refunded' || s === 'withdrawn' || s === 'expired' ? s : 'all';
   });
   const [q, setQ] = useState('');
   const [sort, setSort] = useState('Newest first');
@@ -135,6 +135,10 @@ export function Applications() {
     ...(counts.withdrawn > 0 || status === 'withdrawn'
       ? [{ id: 'withdrawn', label: <Pill variant="muted" style={{ background: 'none', padding: 0 }}>Withdrawn</Pill>, count: counts.withdrawn }]
       : []),
+    // #13 Expired: terminal (unpaid 14 days after Sent). Same closed/withdrawn family.
+    ...(counts.expired > 0 || status === 'expired'
+      ? [{ id: 'expired', label: <Pill variant="muted" style={{ background: 'none', padding: 0 }}>Expired</Pill>, count: counts.expired }]
+      : []),
   ];
 
   const activeFilter = branch
@@ -175,7 +179,7 @@ export function Applications() {
       )}
 
       <div className="toolbar">
-        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn')} />
+        <FilterTabs tabs={tabs} active={status} onChange={(id) => setStatus(id as Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn' | 'expired')} />
       </div>
 
       <div className="toolbar">
@@ -185,7 +189,7 @@ export function Applications() {
         </div>
         <div className="filterchips">
           {showPartner && (
-            <FilterChip icon={<Icon name="shield" />} label="Partner:" display={partner ? partnerName(partner) : 'All'} value={partner}
+            <FilterChip icon={<Icon name="shield" />} label="Partner:" display={partner ? partnerName(partner) : (partnerScope === ALL_PARTNERS ? 'All' : partnerName(partnerScope))} value={partner}
               onChange={(e) => { setPartner(e.target.value); setAgency(''); setBranch(''); }}>
               <option value="">All</option>
               {getPartners().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -239,7 +243,7 @@ export function Applications() {
                   <td>{r.prop}</td>
                   <td>{r.branch}<div className="dt__sub">{r.agency}</div></td>
                   <td style={{ textAlign: 'right' }}><span className="dt__rent">£{r.rent.toLocaleString('en-GB')}</span><div className="dt__sub">per month</div></td>
-                  <td><span className="status-cell"><Pill variant={r.status === 'withdrawn' ? 'muted' : (r.status as PillVariant)}>{STATUS_LABEL[r.status]}</Pill>{r.refunded && <span className="refund-tag" title="Guarantor fee refunded">Refunded</span>}</span></td>
+                  <td><span className="status-cell"><Pill variant={r.status === 'withdrawn' || r.status === 'expired' ? 'muted' : (r.status as PillVariant)}>{STATUS_LABEL[r.status]}</Pill>{r.refunded && <span className="refund-tag" title="Guarantor fee refunded">Refunded</span>}</span></td>
                   <td className="dt__num soft">{fmtDate(r.date)}</td>
                   <td><Icon name="chevronRight" className="dt__chev" size={16} /></td>
                 </tr>

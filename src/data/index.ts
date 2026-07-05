@@ -21,4 +21,6 @@ export * from './reconciliationService';
 export * from './addressService';
 export * from './paymentService';
 export * from './paymentMetrics';
+export * from './notesService';
+export * from './healthService';
 export * as helpService from './helpService';

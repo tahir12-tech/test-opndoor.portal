@@ -69,6 +69,8 @@ export interface FullApp {
   withdrawn: boolean;
   withdrawnReason: WithdrawReason | null;
   withdrawnNote: string | null;
+  /** #13 True when auto-expired (unpaid 14 days after Sent); terminal, pre-payment. */
+  expired: boolean;
 }
 
 let FULL: FullApp[] = [];
@@ -95,7 +97,7 @@ export function isHydrated(): boolean {
   return HYDRATED;
 }
 
-const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn' };
+const STATUS_LABEL: Record<Status, string> = { sent: 'Sent', paid: 'Paid', deed: 'Deed Issued', withdrawn: 'Withdrawn', expired: 'Expired' };
 
 export interface AppScopeOpts {
   role: Role;
@@ -108,7 +110,7 @@ export interface AppFilterOpts extends AppScopeOpts {
   /** 'refunded' and 'awaiting' (deed out for signature) are cross-cuts of Paid;
       'delivery-failed' is a cross-cut of Deed (issued but not delivered to an
       agent contact, #84). */
-  status?: Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn';
+  status?: Status | 'all' | 'refunded' | 'awaiting' | 'delivery-failed' | 'withdrawn' | 'expired';
   agency?: string;
   branch?: string;
   q?: string;
@@ -123,16 +125,17 @@ function scopedSet(opts: AppScopeOpts): ApplicationSummary[] {
   return set;
 }
 
-export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number; withdrawn: number } {
+export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number; withdrawn: number; expired: number } {
   const set = scopedSet(opts);
   // 'refunded' and 'awaiting' overlap 'paid' (both keep status Paid by design), so
   // they are counted in addition to paid, not instead of it. all = sent+paid+deed.
   // 'deliveryFailed' is a cross-cut of Deed (issued but no reachable agent contact).
-  // #2 'withdrawn' is terminal and OUT of the funnel: it is not part of all/sent/
-  // paid/deed, only its own separate count (surfaced via its own chip).
-  const counts = { all: 0, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0, deliveryFailed: 0, withdrawn: 0 };
+  // #2/#13 'withdrawn' and 'expired' are terminal and OUT of the funnel: not part of
+  // all/sent/paid/deed, only their own separate counts (surfaced via their chips).
+  const counts = { all: 0, sent: 0, paid: 0, deed: 0, refunded: 0, awaiting: 0, deliveryFailed: 0, withdrawn: 0, expired: 0 };
   set.forEach((r) => {
     if (r.status === 'withdrawn') { counts.withdrawn++; return; }
+    if (r.status === 'expired') { counts.expired++; return; }
     counts.all++;
     counts[r.status]++;
     if (r.refunded) counts.refunded++;
@@ -148,9 +151,9 @@ export function getApplications(opts: AppFilterOpts): ApplicationSummary[] {
   let rows = scopedSet(opts);
   if (opts.partner) rows = rows.filter((r) => r.partner === opts.partner);
   rows = rows.filter((r) => {
-    // #2 Withdrawn is terminal and out of the default/every-other view; it appears
-    // only when its own chip is selected.
-    if (r.status === 'withdrawn' && opts.status !== 'withdrawn') return false;
+    // #2/#13 Withdrawn and Expired are terminal and out of the default/every-other
+    // view; each appears only when its own chip is selected.
+    if ((r.status === 'withdrawn' || r.status === 'expired') && opts.status !== r.status) return false;
     if (opts.status === 'refunded') { if (!r.refunded) return false; }
     else if (opts.status === 'awaiting') { if (!r.awaitingSignature) return false; }
     else if (opts.status === 'delivery-failed') { if (opts.role === 'referrer' || !(r.status === 'deed' && !contactForApplication(r.agency, r.branch).contact)) return false; }
@@ -189,7 +192,7 @@ export function findActiveReferralByTenantProperty(opts: AppScopeOpts, email: st
   if (!em || !pc) return null;
   for (const s of scopedSet(opts)) {
     if (s.refunded) continue; // refunded is a terminal cross-cut
-    if (s.status === 'withdrawn') continue; // #2 withdrawn is terminal: not an active duplicate
+    if (s.status === 'withdrawn' || s.status === 'expired') continue; // #2/#13 terminal: not an active duplicate
     const rec = RECORDS.find((r) => r.ref === s.ref);
     const rEm = (rec?.email ?? '').trim().toLowerCase();
     const rPc = (rec?.postcode ?? '').replace(/\s+/g, '').toLowerCase();
@@ -583,7 +586,17 @@ export function canWithdraw(role: Role, status: Status, ownedByReferrer: boolean
  * (the caller reflects the change in the demo view locally).
  */
 export async function withdrawApplication(ref: string, reason: WithdrawReason, note: string): Promise<void> {
-  if (!SUPABASE_ENABLED) return;
+  if (!SUPABASE_ENABLED) {
+    // #10 Mock/demo mode: mutate the working copies so every surface (detail pill/
+    // banner, list row, chip, dashboard counter) reflects the withdrawal after the
+    // caller's refresh() bumps dataVersion. Live mode persists via the RPC below and
+    // re-hydrates instead.
+    const rec = RECORDS.find((r) => r.ref === ref);
+    if (rec) { rec.status = 'withdrawn'; rec.withdrawnReason = reason; }
+    const row = LIST.find((r) => r.ref === ref);
+    if (row) { row.status = 'withdrawn'; row.withdrawn = true; }
+    return;
+  }
   const { error } = await sb().rpc('mark_withdrawn', { p_ref: ref, p_reason: reason, p_note: note.trim() || null });
   if (error) throw new Error(error.message || 'Could not withdraw the application.');
 }
