@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>opndoor Guarantee Referral Portal — User guide</title>
+<style>
+:root{--ink:#271D5F;--ink-soft:#5B4D86;--ink-mute:#8B80Ad;--helio:#B54DE0;--lilac:#F8EFF9;--line:#E9E1F2}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact;scroll-behavior:smooth}
+body{margin:0;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#F4F0FA;line-height:1.62;font-size:15px}
+.sheet{max-width:820px;margin:0 auto;background:#fff;min-height:100vh;box-shadow:0 1px 40px rgba(39,29,95,.08)}
+.band{background:var(--ink);color:#fff;padding:42px 56px}
+.wordmark{font-family:'Sora',sans-serif;font-weight:800;font-size:25px;letter-spacing:-.02em}
+.band__eye{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#C9B8F0;font-weight:700;margin-top:16px}
+.band h1{font-family:'Sora',sans-serif;font-size:30px;margin:8px 0 6px;font-weight:800;letter-spacing:-.02em}
+.band p{margin:0;color:#D9CEF2;font-size:15px}
+.body{padding:38px 56px 64px}
+.lead{font-size:16.5px;color:var(--ink-soft);margin:0 0 8px}
+h2{font-family:'Sora',sans-serif;font-size:21px;margin:38px 0 10px;font-weight:800;letter-spacing:-.01em;padding-top:6px}
+h3{font-family:'Sora',sans-serif;font-size:15.5px;margin:22px 0 6px;font-weight:700}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:7px 0}
+a{color:var(--helio);font-weight:600;text-decoration:none}
+.toc{background:var(--lilac);border:1px solid var(--line);border-radius:14px;padding:20px 26px;margin:26px 0 8px}
+.toc h4{margin:0 0 10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mute);font-weight:700}
+.toc ol{columns:2;column-gap:36px;margin:0;padding-left:18px}
+.toc li{margin:5px 0}
+.toc a{color:var(--ink);font-weight:600}
+.callout{background:var(--lilac);border-left:3px solid var(--helio);border-radius:0 12px 12px 0;padding:14px 20px;margin:16px 0}
+.callout b{color:var(--ink)}
+.pill{display:inline-block;background:#EFE7FB;border-radius:999px;padding:2px 11px;font-size:12px;font-weight:700;color:var(--ink);font-family:'Sora',sans-serif}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--lilac);font-family:'Sora',sans-serif;font-weight:700;font-size:13px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+.steps>li{counter-increment:s;position:relative;padding-left:42px;margin:14px 0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:-2px;width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;font-weight:800;font-family:'Sora',sans-serif;display:flex;align-items:center;justify-content:center;font-size:14px}
+.foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-mute);font-size:12.5px}
+.printbtn{position:fixed;top:20px;right:20px;background:var(--helio);color:#fff;border:0;border-radius:999px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(181,77,224,.4);font-family:inherit;z-index:50}
+@media print{body{background:#fff;font-size:11.5pt}.sheet{box-shadow:none;max-width:none}.printbtn{display:none}.band{padding:28px 0 22px}.body{padding:22px 0 0}h2{page-break-after:avoid}.callout,table,.toc,.steps>li{page-break-inside:avoid}a{color:var(--ink)}@page{margin:15mm 18mm}}
+</style>
+</head>
+<body>
+<button class="printbtn" onclick="window.print()">Save as PDF</button>
+<div class="sheet">
+  <div class="band">
+    <div class="wordmark">opndoor</div>
+    <div class="band__eye">Guarantee Referral Portal · User guide</div>
+    <h1>The complete guide to the portal</h1>
+    <p>Refer a tenant, track it from Sent to Deed Issued, and understand what happens along the way.</p>
+  </div>
+  <div class="body">
+    <p class="lead">This guide covers everything you need to use the Guarantee Referral Portal, for every role. Management and opndoor admins should also read the <b>Management supplement</b>, which covers analytics, commission, settlement and the admin-only tools.</p>
+
+    <div class="toc">
+      <h4>In this guide</h4>
+      <ol>
+        <li><a href="#welcome">What the portal is for</a></li>
+        <li><a href="#signing-in">Signing in with two-factor</a></li>
+        <li><a href="#sending-a-referral">Sending a referral</a></li>
+        <li><a href="#lifecycle">Sent, Paid, Deed Issued</a></li>
+        <li><a href="#the-deed">The guarantee deed</a></li>
+        <li><a href="#tracking">Tracking &amp; the dashboard</a></li>
+        <li><a href="#applications">Applications, agencies &amp; branches</a></li>
+        <li><a href="#roles">Roles &amp; permissions</a></li>
+      </ol>
+    </div>
+
+    <h2 id="welcome">1. What the portal is for</h2>
+    <p>The Guarantee Referral Portal lets partner staff refer tenants who cannot pass standard referencing to opndoor's professional guarantor service, and track each referral from <b>Sent</b> to <b>Paid</b> to <b>Deed Issued</b>.</p>
+    <p>opndoor provides a <b>Deed of Guarantee</b> in favour of the property, for tenants who cannot provide their own guarantor. opndoor is a professional guarantor service — <b>not insurance</b> — and is not a party to, or named on, the tenancy agreement. The referring agent remains the claim contact.</p>
+
+    <h2 id="signing-in">2. Signing in with two-factor</h2>
+    <p>The portal protects live tenant and commercial data, so every account signs in with two-factor authentication (2FA).</p>
+    <ol class="steps">
+      <li>Enter your <b>work email</b> and password.</li>
+      <li>At the second step, enter the <b>6-digit code</b> from your authenticator app.</li>
+      <li>The first time you sign in you will be prompted to <b>enrol</b> your authenticator by scanning a QR code — keep that app; you'll use it every sign-in.</li>
+    </ol>
+    <div class="callout"><p style="margin:0"><b>Lost your authenticator?</b> Ask an opndoor admin to reset it. They can clear your enrolment so you set it up again at your next sign-in.</p></div>
+
+    <h2 id="sending-a-referral">3. Sending a referral</h2>
+    <p>Open <b>New application</b> and complete the sections in order:</p>
+    <ol class="steps">
+      <li><b>Tenant</b> — name, contact details and date of birth.</li>
+      <li><b>Property</b> — the address being let.</li>
+      <li><b>Tenancy</b> — the rent and the tenancy start date.</li>
+      <li><b>Agent &amp; branch</b> — search for an existing agency and branch, or add a new one on the fly if it isn't listed.</li>
+    </ol>
+    <p>Submit to send the referral to the tenant. You do <b>not</b> enter a guarantee reference, issue date or expiry — those are <b>assigned automatically</b> once the guarantee is issued and appear on the application's detail view.</p>
+    <div class="callout"><p style="margin:0"><b>Added an agency or branch that wasn't listed?</b> It appears on the Agencies &amp; branches screen and is reviewed by opndoor for possible duplicates before it becomes a canonical record. Your referral is attached to it either way.</p></div>
+
+    <h2 id="lifecycle">4. Sent, Paid, Deed Issued</h2>
+    <p>Every referral moves through the same lifecycle. These are the statuses you'll see across the dashboard and Applications screen:</p>
+    <table>
+      <tr><th>Status</th><th>What it means</th></tr>
+      <tr><td><b>Sent</b></td><td>The referral has been sent to the tenant to pay the guarantor fee.</td></tr>
+      <tr><td><b>Paid</b></td><td>The guarantor fee — one month's rent — has been paid.</td></tr>
+      <tr><td><b>Deed Issued</b></td><td>The Deed of Guarantee has been issued and stored against the record.</td></tr>
+      <tr><td><b>Withdrawn</b></td><td>The referral was withdrawn before completing.</td></tr>
+      <tr><td><b>Refunded</b></td><td>A paid fee was refunded (for example, the let fell through).</td></tr>
+    </table>
+
+    <h2 id="the-deed">5. The guarantee deed</h2>
+    <p>The <b>Deed of Guarantee</b> is the legal instrument opndoor issues in favour of the property. It gives the landlord the reassurance a personal guarantor would, standing behind the tenant's obligations under the tenancy.</p>
+    <ul>
+      <li>opndoor is <b>not a party to the tenancy agreement</b> and is not named on it.</li>
+      <li>The <b>referring agent is the claim contact</b> — anything arising under the guarantee goes through them.</li>
+      <li>The deed is <b>stored against the application</b> once issued; you can open it from the application detail view.</li>
+    </ul>
+    <p><b>Changing the tenancy start date:</b> if a tenancy date needs to move, it can be amended as long as the new date is within <b>7 days</b> of the payment date. Amending it reissues the deed with the corrected date. This is available to opndoor admins and management on the detail view.</p>
+
+    <h2 id="tracking">6. Tracking &amp; the dashboard</h2>
+    <p>The dashboard is your live view of performance:</p>
+    <ul>
+      <li>The <b>Sent → Paid → Deed Issued</b> funnel shows conversion at each stage.</li>
+      <li>The <b>time period selector</b> at the top — from the last 7 days through to all time — reframes every figure and chart on the page.</li>
+      <li><b>Volume charts</b> show referrals over the selected period. Breakdown tables are labelled <i>within the selected period</i> where they are period-clipped.</li>
+      <li><b>Export</b> downloads the analytics for the selected period.</li>
+    </ul>
+    <div class="callout"><p style="margin:0">Referrers see their own referrals. Management and opndoor admins see the whole estate. Commission and fee figures are shown to management and opndoor admins only — see the Management supplement.</p></div>
+
+    <h2 id="applications">7. Applications, agencies &amp; branches</h2>
+    <p>The <b>Applications</b> screen lists referrals with search and status filters. The count beside a filter reflects the applications matching it.</p>
+    <p>The <b>Agencies &amp; branches</b> screen shows the network you refer through. Click any figure to drill through to the applications behind it. You can also jump straight to a filtered list — for example, opening an agency or branch takes you to its applications.</p>
+
+    <h2 id="roles">8. Roles &amp; permissions</h2>
+    <table>
+      <tr><th>Role</th><th>What they can see and do</th></tr>
+      <tr><td><b>opndoor</b></td><td>opndoor's internal team. Manages everything, including reconciliation of fly-created records and the HubSpot mapping. Actions taken by opndoor appear as "opndoor" on partner-facing screens.</td></tr>
+      <tr><td><b>Management</b></td><td>Sees all tracking and analytics across the whole estate, including commission and fees, and can add their own users. Cannot edit canonical records or portal settings.</td></tr>
+      <tr><td><b>Referrer</b></td><td>Sees and tracks only their own referrals. Can add agencies and branches on the fly. Does not see commission figures.</td></tr>
+    </table>
+
+    <div class="foot">This user guide describes the shipped portal. It is a practical guide, not a legal document; the Deed of Guarantee governs the guarantee in full. Questions? Contact your opndoor partnerships team from the Help page. © opndoor.</div>
+  </div>
+</div>
+</body>
+</html>

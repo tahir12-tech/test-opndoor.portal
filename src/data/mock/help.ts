@@ -7,19 +7,22 @@ import type { HelpContent } from '../types';
 
 export const HELP_SEED: HelpContent = {
   gettingStarted: [
-    { id: 'gs0', icon: 'doc', type: 'Guide', title: 'Portal user guide', desc: 'The complete guide to referring, tracking and earning through the portal. Opens the full document.', meta: '' },
-    { id: 'gs0b', icon: 'doc', type: 'Guide', title: 'Sales and conversation guide', desc: 'How to talk to the agent and the tenant, who qualifies, how claims work, and where the line is.', meta: '' },
+    // #110 Shipped, print-to-PDF documents under /help-docs/ replace the old "Coming soon" placeholders.
+    { id: 'gs0', icon: 'doc', type: 'Guide', title: 'Portal user guide', desc: 'The complete guide to referring, tracking and earning through the portal — written for every role. Opens in the viewer; use Save as PDF to export.', meta: 'Complete guide · all roles', href: '/help-docs/user-guide.html' },
+    { id: 'gsms', icon: 'users', type: 'Supplement', title: 'Management supplement', desc: 'Estate-wide analytics, the fee and commission, settlement, exports and the opndoor-admin tools — the parts referrers don’t see.', meta: 'Management & opndoor admin', href: '/help-docs/management-supplement.html', minRole: 'management' },
+    { id: 'gs0b', icon: 'doc', type: 'Guide', title: 'Sales and conversation guide', desc: 'How to talk to the agent and the tenant, who qualifies, how claims work, and where the line is between a guarantor service and insurance.', meta: 'Management & opndoor admin', href: '/help-docs/sales-guide.html', minRole: 'management' },
     { id: 'gs1', icon: 'video', type: 'Video', title: 'Welcome to the portal', desc: 'A short tour of the dashboard, applications and how a referral moves from Sent to Deed Issued.', meta: '' },
-    { id: 'gs2', icon: 'doc', type: 'Guide', title: 'Signing in with two-factor', desc: 'How to sign in with your work email and the 6-digit verification code at the second step.', meta: '' },
-    { id: 'gs3', icon: 'doc', type: 'Guide', title: 'Sending a referral', desc: 'Completing the new application form: tenant, property, tenancy, and the agent and branch fields.', meta: '' },
-    { id: 'gs4', icon: 'deed', type: 'Guide', title: 'Understanding the guarantee deed', desc: 'What the Deed of Guarantee covers and how opndoor provides it in favour of the property.', meta: '' },
-    { id: 'gs5', icon: 'doc', type: 'Guide', title: 'Tracking and the dashboard', desc: 'Reading the Sent to Paid to Deed funnel, the time period filter, volume charts and CSV export.', meta: '' },
-    { id: 'gs6', icon: 'users', type: 'Guide', title: 'Roles and permissions', desc: 'What opndoor admins, management and referrers can each see and do across the portal.', meta: '' },
+    { id: 'gs2', icon: 'doc', type: 'Guide', title: 'Signing in with two-factor', desc: 'How to sign in with your work email and the 6-digit verification code at the second step.', meta: 'Opens the user guide', href: '/help-docs/user-guide.html#signing-in' },
+    { id: 'gs3', icon: 'doc', type: 'Guide', title: 'Sending a referral', desc: 'Completing the new application form: tenant, property, tenancy, and the agent and branch fields.', meta: 'Opens the user guide', href: '/help-docs/user-guide.html#sending-a-referral' },
+    { id: 'gs4', icon: 'deed', type: 'Guide', title: 'Understanding the guarantee deed', desc: 'What the Deed of Guarantee covers and how opndoor provides it in favour of the property.', meta: 'Opens the user guide', href: '/help-docs/user-guide.html#the-deed' },
+    { id: 'gs5', icon: 'doc', type: 'Guide', title: 'Tracking and the dashboard', desc: 'Reading the Sent to Paid to Deed funnel, the time period filter, volume charts and export.', meta: 'Opens the user guide', href: '/help-docs/user-guide.html#tracking' },
+    { id: 'gs6', icon: 'users', type: 'Guide', title: 'Roles and permissions', desc: 'What opndoor admins, management and referrers can each see and do across the portal.', meta: 'Opens the user guide', href: '/help-docs/user-guide.html#roles' },
   ],
   templates: [
-    { id: 'tp0', icon: 'doc', type: 'Flyer', title: 'Agent one-pager (opndoor for letting agents)', desc: 'A branded one-page flyer to share with letting agents: turn failed references into completed lets, with the benefits and how it works.', meta: '' },
-    { id: 'tp1', icon: 'doc', type: 'Checklist', title: 'Referral information checklist', desc: 'The tenant, property and tenancy details to gather before you start an application.', meta: '' },
-    { id: 'tp2', icon: 'doc', type: 'Leaflet', title: 'Tenant explainer leaflet', desc: 'A one-page explainer to share with tenants: what the opndoor guarantor service is, the fee, and how it works.', meta: '' },
+    { id: 'tp0', icon: 'doc', type: 'Flyer', title: 'Agent one-pager (opndoor for letting agents)', desc: 'A branded one-page flyer to share with letting agents: turn failed references into completed lets, with the benefits and how it works.', meta: 'One-page flyer', href: '/help-docs/agent-one-pager.html' },
+    { id: 'tp2', icon: 'doc', type: 'Leaflet', title: 'Tenant explainer leaflet', desc: 'A one-page explainer to share with tenants: what the opndoor guarantor service is, the fee, and how it works.', meta: 'One-page leaflet', href: '/help-docs/tenant-explainer.html' },
+    { id: 'tplg', icon: 'doc', type: 'Guide', title: 'Landlord guide', desc: 'A one-page guide to share with landlords: what the Deed of Guarantee means for their property, that it isn’t insurance, and that the agent stays the claim contact.', meta: 'For landlords', href: '/help-docs/landlord-guide.html' },
+    { id: 'tp1', icon: 'doc', type: 'Checklist', title: 'Referral information checklist', desc: 'The tenant, property and tenancy details to gather before you start an application.', meta: 'Opens the user guide', href: '/help-docs/user-guide.html#sending-a-referral' },
     { id: 'tp3', icon: 'image', type: 'Assets', title: 'Co-branding assets', desc: 'Logos and brand guidance for white-labelling the portal with your own branding.', meta: '' },
   ],
   faqs: [

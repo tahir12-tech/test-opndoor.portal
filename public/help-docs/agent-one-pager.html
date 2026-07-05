@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>opndoor for letting agents</title>
+<style>
+:root{--ink:#271D5F;--ink-soft:#5B4D86;--ink-mute:#8B80Ad;--helio:#B54DE0;--lilac:#F8EFF9;--line:#E9E1F2}
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#F4F0FA;line-height:1.6;font-size:15px}
+.sheet{max-width:800px;margin:0 auto;background:#fff;min-height:100vh;box-shadow:0 1px 40px rgba(39,29,95,.08)}
+.band{background:var(--ink);color:#fff;padding:38px 52px}
+.wordmark{font-family:'Sora',sans-serif;font-weight:800;font-size:24px;letter-spacing:-.02em}
+.band__eye{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#C9B8F0;font-weight:700;margin-top:14px}
+.band h1{font-family:'Sora',sans-serif;font-size:28px;margin:8px 0 6px;font-weight:800;letter-spacing:-.02em}
+.band p{margin:0;color:#D9CEF2;font-size:15px}
+.body{padding:38px 52px 60px}
+.lead{font-size:16.5px;color:var(--ink-soft);margin:0 0 22px}
+h2{font-family:'Sora',sans-serif;font-size:19px;margin:30px 0 8px;font-weight:800;letter-spacing:-.01em}
+p{margin:0 0 12px}
+ul{margin:0 0 14px;padding-left:20px}
+li{margin:7px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}
+.tile{background:var(--lilac);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.tile h3{font-family:'Sora',sans-serif;font-size:15px;margin:0 0 4px;font-weight:700}
+.tile p{margin:0;font-size:14px;color:var(--ink-soft)}
+.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin:12px 0}
+.steps li::before{content:counter(s);position:absolute;left:0;top:-2px;width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;font-weight:800;font-family:'Sora',sans-serif;display:flex;align-items:center;justify-content:center;font-size:14px}
+.callout{background:var(--lilac);border-left:3px solid var(--helio);border-radius:0 12px 12px 0;padding:16px 20px;margin:20px 0}
+.foot{margin-top:36px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-mute);font-size:12.5px}
+.printbtn{position:fixed;top:20px;right:20px;background:var(--helio);color:#fff;border:0;border-radius:999px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(181,77,224,.4);font-family:inherit;z-index:50}
+@media print{body{background:#fff}.sheet{box-shadow:none;max-width:none}.printbtn{display:none}.band{padding:26px 0 20px}.body{padding:22px 0 0}.tile,.callout,.steps li{page-break-inside:avoid}@page{margin:16mm 18mm}}
+</style>
+</head>
+<body>
+<button class="printbtn" onclick="window.print()">Save as PDF</button>
+<div class="sheet">
+  <div class="band">
+    <div class="wordmark">opndoor</div>
+    <div class="band__eye">For letting agents</div>
+    <h1>Turn failed references into completed lets</h1>
+    <p>A professional guarantor for tenants who can't provide their own.</p>
+  </div>
+  <div class="body">
+    <p class="lead">Good tenants fall down on referencing every week — no UK guarantor, self-employed, newly arrived, or just short of an affordability multiple. opndoor stands in as a professional guarantor so the let completes instead of collapsing.</p>
+
+    <div class="grid">
+      <div class="tile"><h3>Save the let</h3><p>Progress tenancies that would otherwise fall through at referencing.</p></div>
+      <div class="tile"><h3>Reassure the landlord</h3><p>A Deed of Guarantee in favour of the property — the cover a personal guarantor gives.</p></div>
+      <div class="tile"><h3>Simple fee</h3><p>One month's rent, paid once by the tenant. No monthly charges.</p></div>
+      <div class="tile"><h3>You stay in control</h3><p>You remain the managing agent and the claim contact throughout.</p></div>
+    </div>
+
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li><b>Refer the tenant</b> in the portal — tenant, property, tenancy, and your branch. It takes a couple of minutes.</li>
+      <li><b>The tenant pays</b> the guarantor fee (one month's rent) through a secure link.</li>
+      <li><b>opndoor issues the Deed of Guarantee</b> in favour of the property, and the tenancy completes.</li>
+    </ol>
+
+    <div class="callout">
+      <p style="margin:0"><b>What opndoor is.</b> A professional guarantor service. opndoor provides a Deed of Guarantee in favour of the property; it is not a party to the tenancy agreement, and it is not insurance. If a claim is ever needed, you — the referring agent — are the point of contact.</p>
+    </div>
+
+    <h2>Who it's for</h2>
+    <ul>
+      <li>Tenants with no UK-based guarantor.</li>
+      <li>Self-employed, contract or newly-arrived applicants who can afford the rent but don't fit a standard reference.</li>
+      <li>Students, relocators and anyone just under an affordability multiple.</li>
+    </ul>
+
+    <div class="foot">Talk to your opndoor partnerships contact to get set up on the portal. This flyer is a summary and does not form part of the Deed of Guarantee. © opndoor.</div>
+  </div>
+</div>
+</body>
+</html>

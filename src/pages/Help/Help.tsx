@@ -9,7 +9,7 @@
    ===================================================================== */
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { helpService, type HelpResource, type HelpResourceSection } from '@/data';
+import { helpService, type HelpResource, type HelpResourceSection, type Role } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
@@ -61,7 +61,19 @@ function imageMime(m?: string): boolean {
     placeholder instead of the app. */
 function servableHref(r: HelpResource): string | null {
   const h = (r.href || '').trim();
-  return /^(https?:|data:|blob:)/i.test(h) ? h : null;
+  if (/^(https?:|data:|blob:)/i.test(h)) return h;
+  // #110 Shipped Help documents live under /help-docs/ (copied from public/ at build).
+  // These are real files, so they are safe to open in the viewer. Any OTHER relative
+  // href is not: an absent relative file falls back to index.html and would embed the
+  // whole portal in the viewer (#75), so only this known directory is allowed.
+  if (/^\/help-docs\/[\w./-]+\.(html?|pdf)(\?|#|$)/i.test(h)) return h;
+  return null;
+}
+// #110 Role gating. A resource with minRole is hidden from roles below it:
+// 'management' shows to management + opndoor admins; 'superadmin' to admins only.
+const ROLE_RANK: Record<Role, number> = { referrer: 1, management: 2, superadmin: 3 };
+function visibleTo(r: HelpResource, role: Role): boolean {
+  return !r.minRole || ROLE_RANK[role] >= ROLE_RANK[r.minRole];
 }
 /** A resource is openable only when it has an uploaded file or a servable href. */
 function hasResourceFile(r: HelpResource): boolean {
@@ -82,6 +94,7 @@ interface ResourceDraftState {
   desc: string;
   meta: string;
   type: string; // "icon|Type"
+  minRole: '' | 'management' | 'superadmin'; // '' = everyone (#110)
 }
 type PendingFile = HelpResource['file'] | null | false;
 
@@ -191,7 +204,7 @@ export function Help() {
   // ---- resource modal ----
   function openResource(section: HelpResourceSection, id?: string) {
     const r = id ? helpService.findResource(section, id) : undefined;
-    setResDraft({ section, id: id || null, title: r?.title || '', desc: r?.desc || '', meta: r?.meta || '', type: r ? `${r.icon}|${r.type}` : 'doc|PDF' });
+    setResDraft({ section, id: id || null, title: r?.title || '', desc: r?.desc || '', meta: r?.meta || '', type: r ? `${r.icon}|${r.type}` : 'doc|PDF', minRole: (r?.minRole as ResourceDraftState['minRole']) || '' });
     setPendingFile(null);
     setChipName(r?.file?.url ? r.file.name : null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -218,7 +231,7 @@ export function Help() {
   function saveResource() {
     if (!resDraft || !resDraft.title.trim()) return;
     const [icon, type] = resDraft.type.split('|');
-    const base = { title: resDraft.title.trim(), desc: resDraft.desc.trim(), icon, type, meta: resDraft.meta.trim() || type };
+    const base = { title: resDraft.title.trim(), desc: resDraft.desc.trim(), icon, type, meta: resDraft.meta.trim() || type, ...(resDraft.minRole ? { minRole: resDraft.minRole as Role } : {}) };
     if (resDraft.id) {
       const changes: Partial<HelpResource> = { ...base };
       if (pendingFile) changes.file = pendingFile;
@@ -226,6 +239,11 @@ export function Help() {
       if (pendingFile === false) {
         const existing = helpService.findResource(resDraft.section, resDraft.id);
         if (existing) delete existing.file;
+      }
+      if (!resDraft.minRole) {
+        // Cleared back to "Everyone": drop the gate (Object.assign won't remove keys).
+        const existing = helpService.findResource(resDraft.section, resDraft.id);
+        if (existing) delete existing.minRole;
       }
       if (!ok) return;
       toast('Resource updated for all users.');
@@ -294,7 +312,7 @@ export function Help() {
   }
 
   function renderSection(section: HelpResourceSection, addLabel: string) {
-    const items = data[section].filter(matchRes);
+    const items = data[section].filter((r) => visibleTo(r, role)).filter(matchRes);
     return (
       <div className="res-grid">
         {items.map((r) => <ResourceCard key={r.id} r={r} section={section} />)}
@@ -337,7 +355,7 @@ export function Help() {
           <section id="getting-started">
             <div className="section-title">
               <h2>Getting started</h2>
-              <span className="count">{data.gettingStarted.length} guides</span>
+              <span className="count">{data.gettingStarted.filter((r) => visibleTo(r, role)).length} guides</span>
               {isAdmin && <Button variant="primary" size="sm" className="addbtn" onClick={() => openResource('gettingStarted')}><Icon name="plus" /> Add resource</Button>}
             </div>
             {renderSection('gettingStarted', 'Add resource')}
@@ -346,7 +364,7 @@ export function Help() {
           <section id="templates">
             <div className="section-title">
               <h2>Templates &amp; downloads</h2>
-              <span className="count">{data.templates.length} files</span>
+              <span className="count">{data.templates.filter((r) => visibleTo(r, role)).length} files</span>
               {isAdmin && <Button variant="primary" size="sm" className="addbtn" onClick={() => openResource('templates')}><Icon name="plus" /> Add file</Button>}
             </div>
             {renderSection('templates', 'Add file')}
@@ -478,6 +496,13 @@ export function Help() {
               </Field>
               <Field label="Size / length" htmlFor="res-meta"><input id="res-meta" type="text" placeholder="e.g. 6 pages · 1.2 MB" value={resDraft.meta} onChange={(e) => setResDraft({ ...resDraft, meta: e.target.value })} /></Field>
             </div>
+            <Field label="Visible to" htmlFor="res-role">
+              <select id="res-role" value={resDraft.minRole} onChange={(e) => setResDraft({ ...resDraft, minRole: e.target.value as ResourceDraftState['minRole'] })}>
+                <option value="">Everyone</option>
+                <option value="management">Management &amp; opndoor admins</option>
+                <option value="superadmin">opndoor admins only</option>
+              </select>
+            </Field>
           </>
         )}
       </Modal>

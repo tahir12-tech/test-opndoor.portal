@@ -202,6 +202,9 @@ export interface HelpResource {
   meta: string;
   href?: string;
   file?: { name: string; url: string; mime: string };
+  /** #110 Minimum role that may see this resource. Undefined = everyone.
+      'management' = management + opndoor admin; 'superadmin' = opndoor admin only. */
+  minRole?: Role;
 }
 export interface HelpFaq {
   id: string;
