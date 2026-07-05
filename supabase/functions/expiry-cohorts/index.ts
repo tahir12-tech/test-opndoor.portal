@@ -66,8 +66,17 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const test = !!body.test;
+    const service = createClient(SUPABASE_URL, SERVICE);
 
-    const cronAuthed = Boolean(CRON_SECRET) && req.headers.get("x-reminders-secret") === CRON_SECRET;
+    // Cron auth: the presented x-reminders-secret must match the edge env OR the
+    // ops_secrets mirror (resilient to a drifted/unset edge env; the crons pass the
+    // Vault secret, which the mirror holds).
+    const presented = req.headers.get("x-reminders-secret") ?? "";
+    let cronAuthed = Boolean(presented) && Boolean(CRON_SECRET) && presented === CRON_SECRET;
+    if (!cronAuthed && presented) {
+      const { data: sec } = await service.from("ops_secrets").select("secret").eq("name", "reminders_cron").maybeSingle();
+      if (sec?.secret && presented === sec.secret) cronAuthed = true;
+    }
     let adminAuthed = false;
     if (!cronAuthed) {
       const authHeader = req.headers.get("Authorization") ?? "";
@@ -105,7 +114,6 @@ Deno.serve(async (req) => {
     const [cy, cm] = cohortMonth.split("-").map(Number);
     const monthStart = `${cohortMonth}-01`;
     const monthEnd = new Date(Date.UTC(cy, cm, 0)).toISOString().slice(0, 10); // last day of month
-    const service = createClient(SUPABASE_URL, SERVICE);
 
     // All in-force guarantees expiring in the cohort month (any partner), with the
     // fields the export needs. Refunded and already-expired rows are dropped below.

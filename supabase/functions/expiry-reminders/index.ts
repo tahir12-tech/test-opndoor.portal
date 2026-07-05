@@ -55,9 +55,16 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const test = !!body.test;
     const reset = !!body.reset;
+    const service = createClient(SUPABASE_URL, SERVICE);
 
-    // Auth: cron secret, or a signed-in opndoor admin (test path).
-    const cronAuthed = Boolean(CRON_SECRET) && req.headers.get("x-reminders-secret") === CRON_SECRET;
+    // Auth: cron secret (edge env OR the ops_secrets mirror, resilient to a drifted
+    // edge env), or a signed-in opndoor admin (test path).
+    const presented = req.headers.get("x-reminders-secret") ?? "";
+    let cronAuthed = Boolean(presented) && Boolean(CRON_SECRET) && presented === CRON_SECRET;
+    if (!cronAuthed && presented) {
+      const { data: sec } = await service.from("ops_secrets").select("secret").eq("name", "reminders_cron").maybeSingle();
+      if (sec?.secret && presented === sec.secret) cronAuthed = true;
+    }
     let adminAuthed = false;
     if (!cronAuthed) {
       const authHeader = req.headers.get("Authorization") ?? "";
@@ -81,7 +88,6 @@ Deno.serve(async (req) => {
     }
 
     const pToday = (test && typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) ? body.date : nowL.date;
-    const service = createClient(SUPABASE_URL, SERVICE);
 
     // Test convenience: clear the reminder history for the windowed guarantees so
     // the run can be repeated from scratch. Never available on the cron path.
