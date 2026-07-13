@@ -91,7 +91,9 @@ Deno.serve(async (req) => {
             pdfPath: path,
           }, { email: eff.email, name: eff.name ?? "" }, "automatic");
         } else {
-          await service.from("activity_log").insert({ application_id: app.id, kind: "deed_undelivered", message: "Deed issued, no agent contact on file, not sent.", actor: "System", visibility: "business" });
+          // No primary contact resolved: mark delivery as failed so it surfaces on
+          // the delivery-failure/needs-attention surfaces (Delivery Failed).
+          await service.from("activity_log").insert({ application_id: app.id, kind: "deed_delivery_failed", message: "Deed issued; no agent contact on file — delivery failed.", actor: "System", visibility: "business" });
         }
 
         // #4 Email the tenant their own signed deed (download link), regardless of

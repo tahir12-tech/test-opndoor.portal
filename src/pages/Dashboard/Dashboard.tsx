@@ -15,6 +15,7 @@ import {
   getBordereauRate, getBordereauRateMeta, setBordereauRate, pendingTenancyCorrections,
   type LeagueRow, type Period, type TrendRow,
 } from '@/data';
+import { formatLondonDate } from '@/lib/format';
 import { BASIS_META, type ExportBasis } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { usePageMeta } from '@/components/layout/pageMeta';
@@ -93,7 +94,7 @@ export function Dashboard() {
   const gbpPence = (n: number) => `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const settleDate = `${settlement.settlementDate.getDate()} ${settlement.settlementDate.toLocaleDateString('en-GB', { month: 'long' })} ${settlement.settlementDate.getFullYear()}`;
   const agentSettleDate = `${agentSettlement.settlementDate.getDate()} ${agentSettlement.settlementDate.toLocaleDateString('en-GB', { month: 'long' })} ${agentSettlement.settlementDate.getFullYear()}`;
-  const dmyShort = (x: Date) => `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`;
+ const dmyShort = (x: Date) => formatLondonDate(x);
 
   // #6 Per-payee commission statements: a branded, self-footing statement for one
   // partner (partner commission) or one agency (agent commission). Each builder reads

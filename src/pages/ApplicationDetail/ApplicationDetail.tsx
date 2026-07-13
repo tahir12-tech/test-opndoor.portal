@@ -16,7 +16,7 @@ import { addApplicationNote, addContact, amendTenancyStart, amendTenancyStartDb,
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
 import { parseFlexibleDate } from '@/lib/validation';
-import { titleCaseAddress } from '@/lib/format';
+import { titleCaseAddress, formatLondonDate, formatLondonDateTime } from '@/lib/format';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
@@ -33,9 +33,9 @@ const NOW = new Date(2026, 5, 26);
 
 const fmtLong = (x: Date) => `${x.getDate()} ${MONTHS_LONG[x.getMonth()]} ${x.getFullYear()}`;
 const fmtShort = (x: Date) => `${String(x.getDate()).padStart(2, '0')} ${MONTHS[x.getMonth()]} ${x.getFullYear()}`;
-const fmtInput = (x: Date) => `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`;
-// Canonical activity timestamp: dd/mm/yyyy · HH:mm.
-const fmtStamp = (x: Date) => `${fmtInput(x)} · ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
+const fmtInput = (x: Date) => formatLondonDate(x);
+// Canonical activity timestamp: dd/mm/yyyy · HH:mm (Europe/London).
+const fmtStamp = (x: Date) => formatLondonDateTime(x).replace(' - ', ' · ');
 // #103 Accept dd/mm/yyyy as before, plus pasted ISO and month-name formats.
 const parseInput = (s: string): Date | null => parseFlexibleDate(s);
 

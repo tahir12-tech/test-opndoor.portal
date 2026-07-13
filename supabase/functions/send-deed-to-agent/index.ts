@@ -48,7 +48,14 @@ Deno.serve(async (req) => {
     });
     if (rpcErr) return json({ ok: false, error: rpcErr.message }, 400);
     const sentTo = resolved?.sent_to as string | undefined;
-    if (!sentTo) return json({ ok: false, error: "No agent contact on file for this branch. Add one, then resend." }, 400);
+    if (!sentTo) {
+      // No resolved contact: record a delivery-failed activity so the record
+      // surfaces on the delivery-failure/needs-attention surfaces. Keep the
+      // client informed by returning a structured error.
+      const service = createClient(SUPABASE_URL, SERVICE);
+      await service.from("activity_log").insert({ application_id: app.id, kind: "deed_delivery_failed", message: "Deed issued; no agent contact on file — delivery failed.", actor: "System", visibility: "business" });
+      return json({ ok: false, sentTo: null, error: "No agent contact on file for this branch. Add one, then resend." }, 400);
+    }
     // Greet by the resolved contact's name only when the recipient IS that
     // contact; a one-off override address is greeted generically, never by the
     // default contact's name.
