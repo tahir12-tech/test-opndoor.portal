@@ -27,3 +27,43 @@ export function titleCaseAddress(s: string | null | undefined): string {
 export function fmtRatePct(rate: number | null | undefined): string {
   return `${((rate ?? 0) * 100).toFixed(1)}%`;
 }
+
+
+
+/**
+ * Format an ISO/parseable date string as dd/mm/yyyy in the Europe/London
+ * timezone (handles the GMT/BST shift consistently, regardless of the
+ * viewer's own device timezone). Returns '' for a null/invalid input.
+ */
+export function formatLondonDate(input: string | number | Date | null | undefined): string {
+  if (!input) return '';
+  const d = new Date(input);
+  if (isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric',
+  }).formatToParts(d);
+  const day = parts.find((p) => p.type === 'day')!.value;
+  const month = parts.find((p) => p.type === 'month')!.value;
+  const year = parts.find((p) => p.type === 'year')!.value;
+  return `${day}/${month}/${year}`;
+}
+
+/**
+ * Format an ISO/parseable date string as dd/mm/yyyy - HH:mm in the
+ * Europe/London timezone. Returns '' for a null/invalid input.
+ */
+export function formatLondonDateTime(input: string | number | Date | null | undefined): string {
+  if (!input) return '';
+  const d = new Date(input);
+  if (isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const day = parts.find((p) => p.type === 'day')!.value;
+  const month = parts.find((p) => p.type === 'month')!.value;
+  const year = parts.find((p) => p.type === 'year')!.value;
+  const hour = parts.find((p) => p.type === 'hour')!.value;
+  const minute = parts.find((p) => p.type === 'minute')!.value;
+  return `${day}/${month}/${year} - ${hour}:${minute}`;
+}
