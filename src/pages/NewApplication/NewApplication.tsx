@@ -41,11 +41,14 @@ export function NewApplication() {
   const toast = useToast();
 
   const [values, setValues] = useState<ReferralValues>(EMPTY);
+  const [dobDisplay, setDobDisplay] = useState('');
+  const [startDisplay, setStartDisplay] = useState('');
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
   const [dupWarn, setDupWarn] = useState<DuplicateMatch | null>(null); // #5 duplicate soft warning
+
   // On-the-fly org creation extras from the AgentBranchPicker (contact capture
   // and, for an admin, the target partner the referral lands under).
   const [org, setOrg] = useState({
@@ -154,6 +157,15 @@ export function NewApplication() {
     }
   }
 
+
+  // dd/mm/yyyy typing helper — auto-inserts slashes, converts to ISO for storage
+  function formatDateInput(raw: string): string {
+    const digits = raw.replace(/\D/g, '').slice(0, 8);
+    if (digits.length > 4) return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return digits;
+  }
+
   const disabled = busy || (submitted && !isValid);
 
   return (
@@ -191,7 +203,10 @@ export function NewApplication() {
                   <input id="t-last" type="text" placeholder="Hartley" value={values.last} onChange={(e) => set('last', e.target.value)} onBlur={() => markTouched('last')} />
                 </Field>
                 <Field label={<>Date of birth <Req /></>} htmlFor="t-dob" error={err('dob')}>
-                  <input id="t-dob" type="date" min={dobMin} max={dobMax} value={values.dob} onChange={(e) => set('dob', e.target.value)} onPaste={onPasteDate('dob')} onBlur={() => markTouched('dob')} />
+                <input id="t-dob" type="text" inputMode="numeric" placeholder="dd/mm/yyyy" maxLength={10}
+                        value={dobDisplay} onChange={(e) => { const f = formatDateInput(e.target.value); setDobDisplay(f); const d = parseFlexibleDate(f); set('dob', d ? toISODate(d) : ''); }}
+                          onPaste={onPasteDate('dob')} onBlur={() => markTouched('dob')} />
+                  {/* <input id="t-dob" type="date" min={dobMin} max={dobMax} value={values.dob} onChange={(e) => set('dob', e.target.value)} onPaste={onPasteDate('dob')} onBlur={() => markTouched('dob')} /> */}
                 </Field>
                 <Field label={<>Email <Req /></>} htmlFor="t-email" error={err('email')}>
                   <input id="t-email" type="email" placeholder="amelia@example.com" value={values.email} onChange={(e) => set('email', e.target.value)} onBlur={() => markTouched('email')} />
@@ -267,7 +282,10 @@ export function NewApplication() {
                   <input id="ty-rent" type="number" min="1" step="1" placeholder="2450" value={values.rent} onChange={(e) => set('rent', e.target.value)} onBlur={() => markTouched('rent')} />
                 </Field>
                 <Field label={<>Tenancy start date <Req /></>} htmlFor="ty-start" error={err('tenancyStart')}>
-                  <input id="ty-start" type="date" min={startMin} max={startMax} value={values.tenancyStart} onChange={(e) => set('tenancyStart', e.target.value)} onPaste={onPasteDate('tenancyStart')} onBlur={() => markTouched('tenancyStart')} />
+                <input id="ty-start" type="text" inputMode="numeric" placeholder="dd/mm/yyyy" maxLength={10}
+  value={startDisplay} onChange={(e) => { const f = formatDateInput(e.target.value); setStartDisplay(f); const d = parseFlexibleDate(f); set('tenancyStart', d ? toISODate(d) : ''); }}
+  onPaste={onPasteDate('tenancyStart')} onBlur={() => markTouched('tenancyStart')} />
+                  {/* <input id="ty-start" type="date" min={startMin} max={startMax} value={values.tenancyStart} onChange={(e) => set('tenancyStart', e.target.value)} onPaste={onPasteDate('tenancyStart')} onBlur={() => markTouched('tenancyStart')} /> */}
                 </Field>
               </div>
             </CardBody>
