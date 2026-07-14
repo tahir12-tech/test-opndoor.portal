@@ -11,7 +11,7 @@
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
 const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
+
 
 export interface SendResult { ok: boolean; error?: string; to?: string; }
 
@@ -32,11 +32,33 @@ export interface SendResult { ok: boolean; error?: string; to?: string; }
 //   }
 // }
 
+//email for both review and user
+// export async function sendEmail(opts: { subject: string; html: string; to?: string }): Promise<SendResult> {
+//   if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured (RESEND_API_KEY not set)." };
+//   if (!REVIEW_ADDRESS) return { ok: false, error: "Test review address (EMAIL_REVIEW_ADDRESS) is not set." };
+//   const recipients = [REVIEW_ADDRESS];
+//   if (opts.to && opts.to !== REVIEW_ADDRESS) recipients.push(opts.to);
+//   try {
+//     const res = await fetch("https://api.resend.com/emails", {
+//       method: "POST",
+//       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+//       body: JSON.stringify({ from: EMAIL_FROM, to: recipients, reply_to: REPLY_TO, subject: opts.subject, html: opts.html }),
+//     });
+//     if (!res.ok) {
+//       const detail = await res.text();
+//       return { ok: false, error: `Resend responded ${res.status}: ${detail.slice(0, 200)}`, to: recipients.join(", ") };
+//     }
+//     return { ok: true, to: recipients.join(", ") };
+//   } catch (e) {
+//     return { ok: false, error: `Resend request failed: ${e instanceof Error ? e.message : String(e)}`, to: recipients.join(", ") };
+//   }
+// }
+
+//email for only user
 export async function sendEmail(opts: { subject: string; html: string; to?: string }): Promise<SendResult> {
   if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured (RESEND_API_KEY not set)." };
-  if (!REVIEW_ADDRESS) return { ok: false, error: "Test review address (EMAIL_REVIEW_ADDRESS) is not set." };
-  const recipients = [REVIEW_ADDRESS];
-  if (opts.to && opts.to !== REVIEW_ADDRESS) recipients.push(opts.to);
+  if (!opts.to) return { ok: false, error: "No recipient email provided." };
+  const recipients = [opts.to];
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -55,15 +77,11 @@ export async function sendEmail(opts: { subject: string; html: string; to?: stri
 
 
 const VALHALLA = "#271d5f";
-const HELIOTROPE = "#d364fb";
-const HELIOTROPE_DEEP = "#b54de0";
 const INK_SOFT = "#5b4d86";
 const LILAC = "#f8eff9";
 
-function layout(title: string, inner: string, intendedFor?: string): string {
-  const testBanner = intendedFor
-    ? `<tr><td style="padding:10px 16px;background:${LILAC};border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">Test mode. This email was intended for ${intendedFor} and redirected to you for review.</td></tr>`
-    : "";
+//email for tenat only 
+function layout(inner: string): string {
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;">
     <tr><td align="center">
@@ -72,13 +90,8 @@ function layout(title: string, inner: string, intendedFor?: string): string {
           <span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#ffffff;">opndoor</span>
           <span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span>
         </td></tr>
-        ${testBanner}
-        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">
-          ${inner}
-        </td></tr>
-        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">
-          opndoor. Questions? Reply to this email or contact ${REPLY_TO}.
-        </td></tr>
+        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${VALHALLA};">${inner}</td></tr>
+        <tr><td style="padding:18px 28px;background:${LILAC};font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${INK_SOFT};">opndoor. Questions? Reply to this email or contact ${REPLY_TO}.</td></tr>
       </table>
     </td></tr>
   </table></body></html>`;
@@ -115,5 +128,5 @@ export function expiryReminderTemplate(p: ExpiryReminderInput): { subject: strin
       </td></tr>
     </table>
     <p style="margin:0 0 8px;font-size:13px;color:${INK_SOFT};">If the tenancy is continuing, arrange a renewal or send a fresh referral so cover stays in place. The guarantee period is 12 months from the tenancy start date.</p>`;
-  return { subject, html: layout(subject, inner, p.intendedFor) };
+  return { subject, html: layout(inner) };
 }
