@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
     const payUrl = pageToken ? `${origin}/pay?token=${pageToken}&utm_source=initial` : session.url!;
 
     // Branded payment email (redirected to the review address in test mode).
-    const tpl = paymentEmailTemplate({ title: tenantTitle, lastName: tenantLast, propertyAddr, guaranteeRef: ref, amount: amountGBP, payUrl, intendedFor: tenantEmail });
+    const tpl = paymentEmailTemplate({ title: tenantTitle, lastName: tenantLast, propertyAddr, guaranteeRef: ref, amount: amountGBP, payUrl });
     const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html, to: tenantEmail });
     // Partner-safe business message; the test-mode redirect target stays admin-only
     // (a separate internal entry), so no partner-facing surface exposes the review
