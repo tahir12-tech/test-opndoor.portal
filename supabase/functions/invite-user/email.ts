@@ -59,15 +59,38 @@ export interface SendResult {
 // }
 
 //email for only user
-export async function sendEmail(opts: { subject: string; html: string; to: string }): Promise<SendResult> {
+// export async function sendEmail(opts: { subject: string; html: string; to: string }): Promise<SendResult> {
+//   if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured (RESEND_API_KEY not set)." };
+//   if (!opts.to) return { ok: false, error: "No recipient email provided." };
+//   const recipients = [opts.to];
+//   try {
+//     const res = await fetch("https://api.resend.com/emails", {
+//       method: "POST",
+//       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+//       body: JSON.stringify({ from: EMAIL_FROM, to: recipients, reply_to: REPLY_TO, subject: opts.subject, html: opts.html }),
+//     });
+//     if (!res.ok) {
+//       const detail = await res.text();
+//       return { ok: false, error: `Resend responded ${res.status}: ${detail.slice(0, 200)}`, to: recipients.join(", ") };
+//     }
+//     return { ok: true, to: recipients.join(", ") };
+//   } catch (e) {
+//     return { ok: false, error: `Resend request failed: ${e instanceof Error ? e.message : String(e)}`, to: recipients.join(", ") };
+//   }
+// }
+
+//check email from chnage for user
+
+export async function sendEmail(opts: { subject: string; html: string; to?: string; from?: string }): Promise<SendResult> {
   if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured (RESEND_API_KEY not set)." };
   if (!opts.to) return { ok: false, error: "No recipient email provided." };
   const recipients = [opts.to];
+  const from = opts.from ?? EMAIL_FROM;
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: EMAIL_FROM, to: recipients, reply_to: REPLY_TO, subject: opts.subject, html: opts.html }),
+      body: JSON.stringify({ from, to: recipients, reply_to: REPLY_TO, subject: opts.subject, html: opts.html }),
     });
     if (!res.ok) {
       const detail = await res.text();
