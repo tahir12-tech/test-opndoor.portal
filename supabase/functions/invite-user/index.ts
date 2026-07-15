@@ -118,14 +118,14 @@ Deno.serve(async (req) => {
     const inviterName = caller.full_name && !caller.full_name.includes("@") ? caller.full_name : "";
     const tpl = inviteEmailTemplate({ link, intendedFor: email, firstName, inviterName, partnerName });
     // const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html });
-    // const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html, to: email });
+     const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html, to: email });
 
-    const res = await sendEmail({
-        subject: tpl.subject,
-        html: tpl.html,
-        to: email,
-        from: "opndoor <invites@sandboxwirewand.com>",  // yahi is email ka apna "from" hai
-      });
+    // const emailRes = await sendEmail({
+    //     subject: tpl.subject,
+    //     html: tpl.html,
+    //     to: email,
+    //     from: "opndoor <invites@opndoor.co>",  // yahi is email ka apna "from" hai
+    //   });
     // Audit the invite (best-effort).
     if (targetUserId) {
       await service.from("user_audit").insert({
