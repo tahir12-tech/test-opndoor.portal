@@ -29,6 +29,17 @@ export interface PayPageData {
   error?: string;
 }
 
+export function getPayPageState(status: string | null | undefined, paymentState: string | null | undefined) {
+  const normalizedStatus = status ?? '';
+  const normalizedPaymentState = paymentState ?? '';
+  const isRefunded = normalizedPaymentState === 'refunded';
+  const isPaid = !isRefunded && (normalizedStatus === 'paid' || normalizedStatus === 'deed' || normalizedPaymentState === 'paid');
+  const isExpired = normalizedStatus === 'expired';
+  const isClosed = normalizedStatus === 'withdrawn' || isRefunded;
+  const payable = !isRefunded && (normalizedStatus === 'sent' || normalizedStatus === 'expired');
+  return { isPaid, isExpired, isClosed, payable };
+}
+
 const DEMO: PayPageData = {
   ok: true, ref: 'GR-20608', partnerName: 'Rightmove', tenantName: 'Mr Alex Turner', tenantTitle: 'Mr',
   addr1: '12 Sydney Street', postcode: 'SW3 6PU', propFull: '12 Sydney Street, London, SW3 6PU',

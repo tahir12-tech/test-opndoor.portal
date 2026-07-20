@@ -18,7 +18,7 @@
 // =====================================================================
 import Stripe from "npm:stripe@^17";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { generateDeed } from "../_shared/pandadoc.ts";
+import { generateDeed, voidDocument } from "../_shared/pandadoc.ts";
 import { deliverRefund } from "../_shared/refundEmail.ts";
 import { deliverPaymentReceipt } from "../_shared/paymentReceiptEmail.ts";
 import { titleCaseAddress } from "../_shared/text.ts";
@@ -103,12 +103,25 @@ Deno.serve(async (req) => {
         const refundAmount = (c.amount_refunded ?? 0) / 100;
         await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
         const { data: appRow } = await service.from("applications")
-          .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode")
+          .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode, pandadoc_document_id, deed_state")
           .eq("stripe_payment_intent_id", pi).maybeSingle();
         if (appRow) {
           await service.from("activity_log").insert({ application_id: appRow.id, kind: "refunded", message: "Payment refunded in Stripe.", actor: "Stripe" });
           if (appRow.refund_after_start) {
             await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
+          }
+          if (appRow.pandadoc_document_id && appRow.deed_state === "awaiting_tenant") {
+            const voidResult = await voidDocument(appRow.pandadoc_document_id);
+            if (voidResult.ok) {
+              await service.from("applications").update({ deed_state: "voided", pandadoc_document_id: null }).eq("id", appRow.id);
+              await service.from("activity_log").insert({
+                application_id: appRow.id,
+                kind: "deed_voided",
+                message: "Outstanding deed signing link expired because the payment was refunded.",
+                actor: "System",
+                visibility: "business",
+              });
+            }
           }
           // Branded refund confirmation to the tenant (redirected to the review
           // address in test mode). Idempotent: the whole charge.refunded block

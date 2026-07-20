@@ -71,9 +71,11 @@ Deno.serve(async (req) => {
     const tenantName = [app.tenant_title, app.tenant_first_name, app.tenant_last_name].filter((x) => (x ?? "").toString().trim()).join(" ").trim();
     // #8 Display-layer title-casing of the property address (postcode left raw).
     const propFull = [titleCaseAddress(app.prop_addr1), titleCaseAddress(app.prop_addr2), titleCaseAddress(app.prop_city), app.prop_postcode].filter(Boolean).join(", ");
-    const isPaid = app.status === "paid" || app.status === "deed" || app.payment_state === "paid";
+    const isRefunded = app.payment_state === "refunded";
+    const isPaid = !isRefunded && (app.status === "paid" || app.status === "deed" || app.payment_state === "paid");
     const isExpired = app.status === "expired";
-    const payable = app.status === "sent" || app.status === "expired";
+    const isClosed = app.status === "withdrawn" || isRefunded;
+    const payable = !isRefunded && (app.status === "sent" || app.status === "expired");
 
     const publicData = {
       ref: app.guarantee_ref,
@@ -90,7 +92,7 @@ Deno.serve(async (req) => {
       status: app.status,
       isPaid,
       isExpired,
-      isClosed: app.status === "withdrawn",
+      isClosed,
       payable,
     };
 
