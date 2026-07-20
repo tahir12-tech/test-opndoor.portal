@@ -20,11 +20,21 @@ interface SelectProps {
   title?: string;
   id?: string;
   style?: CSSProperties;
+  disabled?: boolean;
 }
 
-function StyledSelect({ className, value, onChange, options, ariaLabel, title, id, style }: SelectProps) {
+function StyledSelect({ className, value, onChange, options, ariaLabel, title, id, style, disabled }: SelectProps) {
   return (
-    <select className={className} value={value} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel} title={title} id={id} style={style}>
+    <select
+      className={className}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={ariaLabel}
+      title={title}
+      id={id}
+      style={style}
+      disabled={disabled}
+    >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}

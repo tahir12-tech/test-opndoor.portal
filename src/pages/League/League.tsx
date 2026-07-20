@@ -15,7 +15,7 @@
    Data comes from getLeague / getReferrerLeague (the service). Sorting,
    searching and paging are presentation concerns handled here.
    ===================================================================== */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ALL_PARTNERS, buildLeagueDoc, exportBranded, fmtBig, getLeague, getPartners, getPeriods, partnerName,
@@ -197,15 +197,25 @@ function FullLeagueView() {
   const [sort, setSort] = useState<SortKey>('fees');
   const [dir, setDir] = useState<-1 | 1>(-1);
   const [page, setPage] = useState(0);
-  const [partner, setPartner] = useState('');
+  const [partner, setPartner] = useState(() => (partnerScope === ALL_PARTNERS ? '' : partnerScope));
+  const prevScope = useRef<PartnerScope>(partnerScope);
+
+  useEffect(() => {
+    if (partnerScope !== prevScope.current) {
+      if (partner === prevScope.current) {
+        setPartner(partnerScope === ALL_PARTNERS ? '' : partnerScope);
+      }
+      prevScope.current = partnerScope;
+    }
+  }, [partnerScope, partner]);
 
   // #114 Referrer-leaderboard visibility is set ONLY in Manage partner (the single
   // lever); the in-page control has been removed from the League screen.
 
   const cols = COLS[view];
-  // Show the partner tag only when genuinely viewing across partners (#52).
+  const activePartner = partnerScope === ALL_PARTNERS ? partner : partnerScope;
   const showPartner = partnerScope === ALL_PARTNERS && !partner;
-  const all = getLeague(view, { role, scope: partnerScope, partner, period });
+  const all = getLeague(view, { role, scope: ALL_PARTNERS, partner: activePartner, period });
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -279,8 +289,10 @@ function FullLeagueView() {
         <RoleOnly roles={['superadmin']}>
           <PartnerSelect
             ariaLabel="Partner"
-            value={partner || ALL_PARTNERS}
+            value={partnerScope === ALL_PARTNERS ? (partner || ALL_PARTNERS) : partnerScope}
             onChange={(v) => { setPartner(v === ALL_PARTNERS ? '' : v); setPage(0); }}
+            disabled={partnerScope !== ALL_PARTNERS}
+            title={partnerScope !== ALL_PARTNERS ? 'This league view is already scoped by the selected partner.' : undefined}
             options={[{ value: ALL_PARTNERS, label: 'All partners' }, ...getPartners().map((p) => ({ value: p.id, label: p.name }))]}
           />
         </RoleOnly>
