@@ -98,7 +98,10 @@ export function Applications() {
     setReferrer('');
   }, [role]);
 
-  const scopeOpts = { role, scope: partnerScope, partner: partner || undefined };
+  // const scopeOpts = { role, scope: partnerScope, partner: partner || undefined };
+
+  const effectiveScope = role === 'superadmin' ? ALL_PARTNERS : partnerScope;
+  const scopeOpts = { role, scope: effectiveScope, partner: partner || undefined };
   // #owner Chips recount within the selected period.
   const counts = countByStatus({ ...scopeOpts, periodRange: range });
   // #13: the "Showing X of Y" denominator must match the active status tab.
@@ -211,11 +214,25 @@ export function Applications() {
             {periods.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </FilterChip>
           {showPartner && (
-            <FilterChip icon={<Icon name="shield" />} label="Partner:" display={partner ? partnerName(partner) : (partnerScope === ALL_PARTNERS ? 'All' : partnerName(partnerScope))} value={partner}
-              onChange={(e) => { setPartner(e.target.value); setAgency(''); setBranch(''); setReferrer(''); }}>
-              <option value="">All</option>
-              {getPartners().map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </FilterChip>
+           <FilterChip
+                icon={<Icon name="shield" />}
+                label="Partner:"
+                display={!partner || partner === ALL_PARTNERS ? 'All' : partnerName(partner)}
+                value={partner}
+                onChange={(e) => {
+                  setPartner(e.target.value);
+                  setAgency('');
+                  setBranch('');
+                  setReferrer('');
+                }}
+              >
+                <option value="">All</option>
+                {getPartners().map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </FilterChip>
           )}
           <FilterChip icon={<Icon name="building" />} label="Agency:" display={agency || 'All'} value={agency}
             onChange={(e) => { setAgency(e.target.value); setBranch(''); }}>
