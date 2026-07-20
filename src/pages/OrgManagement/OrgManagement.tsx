@@ -834,33 +834,76 @@ export function OrgManagement() {
     }
   }
 
-  function submitContact() {
-    if (!ctAgency || busy) return;
-    const name = ctName.trim();
-    const email = ctEmail.trim();
-    // Email is the load-bearing field (#72); the name is optional.
-    if (!email) { toast('Enter a contact email.'); return; }
-    if (!EMAIL_RE.test(email)) { toast('Enter a valid contact email.'); return; }
-    const rec: AgentContact = { name, role: ctRole.trim(), email, phone: ctPhone.trim(), primary: ctPrimary };
-    if (ctEditIndex !== null) {
-      const idx = ctEditIndex;
-      const orig = ctContacts[idx];
-      const otherPrimary = ctContacts.some((c, i) => i !== idx && c.primary);
-      // Item 56: preserve primary through edits; warn before leaving no primary.
-      if (orig?.primary && !ctPrimary && !otherPrimary) {
-        setCtConfirm({
-          title: 'Leave no primary contact?',
-          body: <><b>{ownerLabel}</b> must keep a primary contact for deed delivery. If you save without one, a remaining contact is promoted automatically. To move it deliberately, set another contact as primary instead.</>,
-          confirmLabel: 'Save anyway', danger: true, success: 'Contact updated.', refreshAfter: true,
-          run: async () => { await updateContactLive(ctAgency, ctBranch, idx, orig?.id, rec); resetContactForm(); },
-        });
-        return;
-      }
-      void runOrg(() => updateContactLive(ctAgency, ctBranch, idx, orig?.id, rec), 'Contact updated.', resetContactForm);
-    } else {
-      void runOrg(() => addContactLive(ctAgency, ctBranch, rec), 'Contact added.', resetContactForm);
-    }
+function submitContact() {
+  if (!ctAgency || busy) return;
+
+  const name = ctName.trim();
+  const email = ctEmail.trim();
+
+  if (!email) {
+    toast('Enter a contact email.');
+    return;
   }
+
+  if (!EMAIL_RE.test(email)) {
+    toast('Enter a valid contact email.');
+    return;
+  }
+
+  const rec: AgentContact = {
+    name,
+    role: ctRole.trim(),
+    email,
+    phone: ctPhone.trim(),
+    primary: ctPrimary,
+  };
+
+  const afterSave = () => {
+    setCtConfirm(null);      // <-- clear discard dialog
+    resetContactForm();      // <-- leave edit mode & clear form
+  };
+
+  if (ctEditIndex !== null) {
+    const idx = ctEditIndex;
+    const orig = ctContacts[idx];
+    const otherPrimary = ctContacts.some((c, i) => i !== idx && c.primary);
+
+    if (orig?.primary && !ctPrimary && !otherPrimary) {
+      setCtConfirm({
+        title: 'Leave no primary contact?',
+        body: (
+          <>
+            <b>{ownerLabel}</b> must keep a primary contact for deed delivery.
+            If you save without one, a remaining contact is promoted
+            automatically. To move it deliberately, set another contact as
+            primary instead.
+          </>
+        ),
+        confirmLabel: 'Save anyway',
+        danger: true,
+        success: 'Contact updated.',
+        refreshAfter: true,
+        run: async () => {
+          await updateContactLive(ctAgency, ctBranch, idx, orig?.id, rec);
+          afterSave();
+        },
+      });
+      return;
+    }
+
+    void runOrg(
+      () => updateContactLive(ctAgency, ctBranch, idx, orig?.id, rec),
+      'Contact updated.',
+      afterSave
+    );
+  } else {
+    void runOrg(
+      () => addContactLive(ctAgency, ctBranch, rec),
+      'Contact added.',
+      afterSave
+    );
+  }
+}
 
   /** The consequence text for removing the contact at index (item 57). */
   function removeConsequence(index: number): ReactNode {
@@ -916,20 +959,35 @@ export function OrgManagement() {
   }
 
   // Item 58: pressing Done (or closing) must not silently discard a part-filled form.
-  function requestCloseContacts() {
-    if (busy) return;
-    if (ctConfirm) return; // resolve the open confirmation first
-    if (formDirty) {
-      setCtConfirm({
-        title: 'Discard unsaved contact?',
-        body: <>You have entered contact details that have not been saved. Closing now will discard them.</>,
-        confirmLabel: 'Discard', danger: true, refreshAfter: false,
-        run: async () => { resetContactForm(); setCtOpen(false); },
-      });
-      return;
-    }
+function requestCloseContacts() {
+  if (busy) return;
+
+  // If there is no unsaved form anymore,
+  // clear any old confirmation and close.
+  if (!formDirty) {
+    setCtConfirm(null);
     setCtOpen(false);
+    return;
   }
+
+  setCtConfirm({
+    title: 'Discard unsaved contact?',
+    body: (
+      <>
+        You have entered contact details that have not been saved.
+        Closing now will discard them.
+      </>
+    ),
+    confirmLabel: 'Discard',
+    danger: true,
+    refreshAfter: false,
+    run: async () => {
+      setCtConfirm(null);
+      resetContactForm();
+      setCtOpen(false);
+    },
+  });
+}
 
   function toggle(id: string) {
     setOpenSet((prev) => {
