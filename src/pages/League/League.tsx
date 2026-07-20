@@ -269,7 +269,8 @@ function FullLeagueView() {
         </div>
         <div className="page-head__actions">
           <PeriodSelect ariaLabel="League time period" value={period.id} onChange={setPeriod} options={getPeriods().map((p) => ({ value: p.id, label: p.label }))} />
-          <Button variant="dark" size="sm" onClick={() => void exportBranded(buildLeagueDoc(role, partnerScope, partner, period))} title="Downloads all three league tables as a branded Excel workbook">
+          {/* <Button variant="dark" size="sm" onClick={() => void exportBranded(buildLeagueDoc(role, partnerScope, partner, period))} title="Downloads all three league tables as a branded Excel workbook"> */}
+          <Button variant="dark" size="sm" onClick={() => void exportBranded(buildLeagueDoc(role, partnerScope, partner, period))} title={`Downloads the ${TABS.find((t) => t.id === view)?.label} table as a branded Excel workbook`}>
             <Icon name="download" /> Export
           </Button>
         </div>
