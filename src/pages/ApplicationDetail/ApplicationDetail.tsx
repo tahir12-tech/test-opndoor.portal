@@ -15,17 +15,20 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { addApplicationNote, addContact, amendTenancyStart, amendTenancyStartDb, canAmendTenancyStart, canSendDeed, canWithdraw, contactForApplication, deedDownloadUrl, effectiveContacts, getApplicationDetail, getApplicationNotes, getPaymentInfo, pandadocSandbox, resendDeed, resendPaymentEmail, sendDeedToAgent, stripeTestMode, withdrawApplication, type AppNote, type PaymentInfo, type WithdrawReason } from '@/data';
 import { useSession } from '@/session/SessionContext';
 import { SUPABASE_ENABLED } from '@/lib/supabase';
-import { parseFlexibleDate } from '@/lib/validation';
+import { isTenancyStartInAllowedRange,parseFlexibleDate } from '@/lib/validation';
 import { titleCaseAddress, formatLondonDate, formatLondonDateTime } from '@/lib/format';
 import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Card, CardBody, CardHead } from '@/components/ui/Card';
+import { shouldShowAwaitingTenantSignature } from './deedStatus';
 import { Modal } from '@/components/ui/Modal';
 import { Pill, type PillVariant } from '@/components/ui/Pill';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
 import { useToast } from '@/components/ui/Toast';
 import './ApplicationDetail.css';
+
+
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -366,14 +369,23 @@ export function ApplicationDetail() {
   // ---- amend validation ----
   // Any valid calendar date is allowed. We only require a real dd/mm/yyyy date
   // that differs from the current start; there is no payment-window restriction.
+
+
+  //our code update
   const parsed = parseInput(amendInput);
   let amendTone: 'ok' | 'err' | 'neutral' = 'err';
   let amendText = 'Enter a valid date as dd/mm/yyyy';
   let canSave = false;
-  if (parsed) {
+  if (!amendInput.trim()) {
+    amendTone = 'err';
+    amendText = 'Enter a valid date as dd/mm/yyyy';
+  } else if (parsed) {
     if (parsed.getTime() === currentStart.getTime()) {
       amendTone = 'neutral';
       amendText = 'This is the current start date';
+    } else if (!isTenancyStartInAllowedRange(parsed)) {
+      amendTone = 'err';
+      amendText = 'Date must be within 7 days in the past and 2 years in the future';
     } else {
       amendTone = 'ok';
       amendText = executed
@@ -383,18 +395,49 @@ export function ApplicationDetail() {
     }
   }
 
+  //Old code
+  // const parsed = parseInput(amendInput);
+  // let amendTone: 'ok' | 'err' | 'neutral' = 'err';
+  // let amendText = 'Enter a valid date as dd/mm/yyyy';
+  // let canSave = false;
+  // if (parsed) {
+  //   if (parsed.getTime() === currentStart.getTime()) {
+  //     amendTone = 'neutral';
+  //     amendText = 'This is the current start date';
+  //   }
+  //   //our code updated
+  //   else if (!isTenancyStartInAllowedRange(parsed)) {
+  //     amendTone = 'err';
+  //     amendText = 'Date must be within 7 days in the past and 2 years in the future';
+  //   }  
+  //   else {
+  //     amendTone = 'ok';
+  //     amendText = executed
+  //       ? 'Valid. The signed deed will be voided and a corrected deed reissued to the tenant to sign.'
+  //       : reissues ? 'Valid. A new deed will be issued with this date.' : 'Valid. The tenancy start date will be updated.';
+  //     canSave = true;
+  //   }
+  // }
+
   function openAmend() {
     setAmendInput(fmtInput(currentStart));
     setAmendOpen(true);
   }
 
-  async function saveAmend(confirmReissue = false) {
-    if (!parsed || !canSave) return;
+
+
+  //our code update
+ async function saveAmend(confirmReissue = false) {
+    const parsedDate = parseInput(amendInput);
+    if (!parsedDate || parsedDate.getTime() === currentStart.getTime() || !isTenancyStartInAllowedRange(parsedDate)) {
+      toast('Enter a valid tenancy start date within 7 days in the past and 2 years in the future.');
+      return;
+    }
     // #82 On a signed deed, require the explicit consequence confirmation first.
     if (executed && !confirmReissue) { setConfirmReissueOpen(true); return; }
     let serverMsg: string | undefined;
     try {
-      serverMsg = await amendTenancyStartDb(d.ref, parsed, confirmReissue);
+      serverMsg = await amendTenancyStartDb(d.ref, parsedDate, confirmReissue);
     } catch (err) {
       // Defence in depth: if the server still asks for confirmation, prompt for it.
       if (err && typeof err === 'object' && (err as { needsConfirm?: boolean }).needsConfirm) { setConfirmReissueOpen(true); return; }
@@ -402,8 +445,8 @@ export function ApplicationDetail() {
       return;
     }
     setConfirmReissueOpen(false);
-    const result = amendTenancyStart(d.status, parsed);
-    setCurrentStart(parsed);
+    const result = amendTenancyStart(d.status, parsedDate);
+    setCurrentStart(parsedDate);
     if (result.reissued) {
       setDeedVersion((v) => v + 1);
       if (isDeed && result.issue && result.expiry) setAmendedDates({ issue: fmtShort(result.issue), expiry: fmtShort(result.expiry) });
@@ -417,7 +460,7 @@ export function ApplicationDetail() {
       setExtraActivity((prev) => [
         {
           color: 'var(--heliotrope)',
-          text: result.reissued ? <>Tenancy start amended to <b>{fmtLong(parsed)}</b>; deed reissued</> : <>Tenancy start amended to <b>{fmtLong(parsed)}</b></>,
+          text: result.reissued ? <>Tenancy start amended to <b>{fmtLong(parsedDate)}</b>; deed reissued</> : <>Tenancy start amended to <b>{fmtLong(parsedDate)}</b></>,
           time: `${fmtShort(NOW)} · ${who}`,
         },
         ...prev,
@@ -427,9 +470,56 @@ export function ApplicationDetail() {
     // The Edge Function's summary reflects what actually happened to the deed
     // (voided+regenerated, or archived+replaced); prefer it in live mode.
     if (serverMsg) toast(serverMsg);
-    else toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsed)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsed)}.`);
+    else toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsedDate)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsedDate)}.`);
     void loadPayment();
   }
+
+
+
+  //old code
+
+  // async function saveAmend(confirmReissue = false) {
+  //   if (!parsed || !canSave) return;
+  //   // #82 On a signed deed, require the explicit consequence confirmation first.
+  //   if (executed && !confirmReissue) { setConfirmReissueOpen(true); return; }
+  //   let serverMsg: string | undefined;
+  //   try {
+  //     serverMsg = await amendTenancyStartDb(d.ref, parsed, confirmReissue);
+  //   } catch (err) {
+  //     // Defence in depth: if the server still asks for confirmation, prompt for it.
+  //     if (err && typeof err === 'object' && (err as { needsConfirm?: boolean }).needsConfirm) { setConfirmReissueOpen(true); return; }
+  //     toast(err instanceof Error ? err.message : 'Could not amend the tenancy start date.');
+  //     return;
+  //   }
+  //   setConfirmReissueOpen(false);
+  //   const result = amendTenancyStart(d.status, parsed);
+  //   setCurrentStart(parsed);
+  //   if (result.reissued) {
+  //     setDeedVersion((v) => v + 1);
+  //     if (isDeed && result.issue && result.expiry) setAmendedDates({ issue: fmtShort(result.issue), expiry: fmtShort(result.expiry) });
+  //   }
+  //   // Mock/demo mode only: an optimistic feed entry. In live mode the activity
+  //   // feed is sourced solely from the server activity_log (one entry per amend,
+  //   // written by the Edge Function) and refreshed by loadPayment below, so a
+  //   // client-side entry here would double-log and could claim a phantom reissue.
+  //   if (!SUPABASE_ENABLED) {
+  //     const who = role === 'superadmin' ? 'opndoor' : role === 'management' ? 'Management' : 'Referrer'; // #112
+  //     setExtraActivity((prev) => [
+  //       {
+  //         color: 'var(--heliotrope)',
+  //         text: result.reissued ? <>Tenancy start amended to <b>{fmtLong(parsed)}</b>; deed reissued</> : <>Tenancy start amended to <b>{fmtLong(parsed)}</b></>,
+  //         time: `${fmtShort(NOW)} · ${who}`,
+  //       },
+  //       ...prev,
+  //     ]);
+  //   }
+  //   setAmendOpen(false);
+  //   // The Edge Function's summary reflects what actually happened to the deed
+  //   // (voided+regenerated, or archived+replaced); prefer it in live mode.
+  //   if (serverMsg) toast(serverMsg);
+  //   else toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsed)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsed)}.`);
+  //   void loadPayment();
+  // }
 
   // ---- send deed to agent ----
   // Resolve the branch's effective contacts (agency default when the branch has none).
@@ -742,7 +832,7 @@ export function ApplicationDetail() {
                   )}
                 </>
               ) : SUPABASE_ENABLED && pi && d.status === 'paid' && pi.deedState ? (
-                pi.deedState === 'awaiting_tenant' ? (
+                shouldShowAwaitingTenantSignature(d.status, pi) ? (
                   <>
                     <div className="deed" style={{ opacity: 0.95 }}>
                       <span className="deed__ic" style={{ color: 'var(--sent)' }}><Icon name="clock" strokeWidth={1.8} /></span>
@@ -771,7 +861,7 @@ export function ApplicationDetail() {
                   <>
                     <div className="pay-anomaly">
                       <Icon name="alert" strokeWidth={2.2} />
-                      <span>{pi.deedState === 'declined' ? 'Tenant declined to sign the deed. Review required.' : pi.deedState === 'voided' ? 'Deed document voided in PandaDoc. Review required.' : 'Deed could not be generated. Check the branch has an agent contact, then retry.'}</span>
+                      <span>{pi.deedState === 'declined' ? 'Tenant declined to sign the deed. Review required.' : pi.deedState === 'voided' ? 'Deed document voided in PandaDoc. Review required.' : 'Payment refunded and the associated Deed of Guarantee has been voided.'}</span>
                     </div>
                     <div style={{ marginTop: 10 }}>
                       <Button variant="primary" size="sm" block onClick={doResendDeed} disabled={deedBusy}><Icon name="file" /> {deedBusy ? 'Working…' : 'Generate deed'}</Button>
@@ -826,7 +916,8 @@ export function ApplicationDetail() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setAmendOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={() => saveAmend()} disabled={!canSave}>{executed ? 'Review consequences' : reissues ? 'Save and reissue deed' : 'Save start date'}</Button>
+            {/* <Button variant="primary" onClick={() => saveAmend()} disabled={!canSave}>{executed ? 'Review consequences' : reissues ? 'Save and reissue deed' : 'Save start date'}</Button> */}
+             <Button variant="primary" onClick={() => saveAmend()} disabled={!canSave || !amendInput.trim()}>{executed ? 'Review consequences' : reissues ? 'Save and reissue deed' : 'Save start date'}</Button>
           </>
         }
       >

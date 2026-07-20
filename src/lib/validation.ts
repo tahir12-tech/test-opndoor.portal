@@ -81,6 +81,14 @@ function startOfToday(): Date {
   return t;
 }
 
+//our code updated
+
+export function isTenancyStartInAllowedRange(value: Date, referenceDate: Date = startOfToday()): boolean {
+  const minStart = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate() - 7);
+  const maxStart = new Date(referenceDate.getFullYear() + 2, referenceDate.getMonth(), referenceDate.getDate());
+  return value >= minStart && value <= maxStart;
+}
+
 export interface ReferralValues {
   title: string;
   first: string;
@@ -127,13 +135,24 @@ export function validateReferral(v: ReferralValues): ReferralErrors {
   // Tenancy start: a real date within a sensible range (7 days ago to 2 years ahead).
   if (!start) {
     e.tenancyStart = 'Enter a valid tenancy start date';
-  } else {
+  } 
+  //Our code 
+  else {
     const t = startOfToday();
-    const minStart = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 7);
-    const maxStart = new Date(t.getFullYear() + 2, t.getMonth(), t.getDate());
-    if (start < minStart) e.tenancyStart = 'Tenancy start cannot be more than 7 days in the past';
-    else if (start > maxStart) e.tenancyStart = 'Tenancy start cannot be more than 2 years ahead';
+    if (!isTenancyStartInAllowedRange(start, t)) {
+      if (start < new Date(t.getFullYear(), t.getMonth(), t.getDate() - 7)) e.tenancyStart = 'Tenancy start cannot be more than 7 days in the past';
+      else e.tenancyStart = 'Tenancy start cannot be more than 2 years ahead';
+    }
   }
+  
+  //client code
+  // else {
+  //   const t = startOfToday();
+  //   const minStart = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 7);
+  //   const maxStart = new Date(t.getFullYear() + 2, t.getMonth(), t.getDate());
+  //   if (start < minStart) e.tenancyStart = 'Tenancy start cannot be more than 7 days in the past';
+  //   else if (start > maxStart) e.tenancyStart = 'Tenancy start cannot be more than 2 years ahead';
+  // }
 
   // Combined age rule (re-checked whenever either date changes): 18 by the tenancy start,
   // and not implausibly old. DOB + 18 years must be on or before the tenancy start.
