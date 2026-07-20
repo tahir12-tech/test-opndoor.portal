@@ -207,7 +207,7 @@ export function Login() {
                 </div>
                 <div className="field">
                   <label htmlFor="pass">Password</label>
-                  <PasswordInput id="pass" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <PasswordInput id="pass" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <div className="auth__row auth__row--end">
                   {/* Carry the typed email over so the reset form is prefilled (#60). */}
