@@ -21,7 +21,7 @@ import { usePageMeta } from '@/components/layout/pageMeta';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Card, CardBody, CardHead } from '@/components/ui/Card';
-import { shouldShowAwaitingTenantSignature } from './deedStatus';
+// import { shouldShowAwaitingTenantSignature } from './deedStatus';
 import { Modal } from '@/components/ui/Modal';
 import { Pill, type PillVariant } from '@/components/ui/Pill';
 import { StatusTimeline } from '@/components/ui/StatusTimeline';
@@ -831,47 +831,48 @@ export function ApplicationDetail() {
                     </div>
                   )}
                 </>
-              ) : SUPABASE_ENABLED && pi && d.status === 'paid' && pi.deedState ? (
-                shouldShowAwaitingTenantSignature(d.status, pi) ? (
-                  <>
-                    <div className="deed" style={{ opacity: 0.95 }}>
-                      <span className="deed__ic" style={{ color: 'var(--sent)' }}><Icon name="clock" strokeWidth={1.8} /></span>
-                      <div className="grow">
-                        <div className="deed__t">Deed sent for signature, awaiting tenant</div>
-                        <div className="deed__s">The tenant's signing journey so far</div>
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--sent)', flex: '0 0 auto' }} />
-                        <span style={{ fontWeight: 600 }}>Sent</span>
-                        <span style={{ marginLeft: 'auto', color: 'var(--ink-mute)' }}>{pi.deedSentAt ? fmtStamp(new Date(pi.deedSentAt)) : '—'}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: pi.deedViewedAt ? 'var(--paid)' : 'rgba(39,29,95,0.18)', flex: '0 0 auto' }} />
-                        <span style={{ fontWeight: 600, color: pi.deedViewedAt ? undefined : 'var(--ink-mute)' }}>{pi.deedViewedAt ? 'Viewed by tenant' : 'Not yet viewed'}</span>
-                        {pi.deedViewedAt && <span style={{ marginLeft: 'auto', color: 'var(--ink-mute)' }}>{fmtStamp(new Date(pi.deedViewedAt))}</span>}
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 12 }}>
-                      <Button variant="primary" size="sm" block onClick={doResendDeed} disabled={deedBusy}><Icon name="send" /> {deedBusy ? 'Sending…' : 'Resend signature request'}</Button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="pay-anomaly">
-                    <Icon name="alert" strokeWidth={2.2} />
-                    <span>{pi.deedState === 'declined' ? 'Tenant declined to sign the deed. Review required.' : pi.deedState === 'voided' ? 'Deed document voided in PandaDoc. Review required.' : 'Payment refunded and the associated Deed of Guarantee has been voided.'}</span>
-                  </div>
-                )
-              ) : (
-                <div className="deed" style={{ opacity: 0.85 }}>
-                  <span className="deed__ic" style={{ color: 'var(--ink-mute)' }}><Icon name="clock" strokeWidth={1.8} /></span>
-                  <div className="grow">
-                    <div className="deed__t">Deed not yet issued</div>
-                    <div className="deed__s">{d.status === 'paid' ? 'Deed sent for signature shortly after payment' : 'Issued once the guarantor fee is paid'}</div>
-                  </div>
-                </div>
-              )}
+              )  : SUPABASE_ENABLED && pi && d.status === 'paid' && pi.deedState ? (
+  pi.deedState === 'awaiting_tenant' ? (
+    <>
+      {/* awaiting tenant signature UI */}
+    </>
+  ) : pi.deedState === 'declined' ? (
+    <div className="pay-anomaly">
+      <Icon name="alert" strokeWidth={2.2} />
+      <span>Tenant declined to sign the deed. Review required.</span>
+    </div>
+  ) : pi.deedState === 'voided' ? (
+    <div className="pay-anomaly">
+      <Icon name="alert" strokeWidth={2.2} />
+      <span>
+        {pi.paymentState === 'refunded'
+          ? 'Payment refunded and the associated Deed of Guarantee has been voided.'
+          : 'Deed document voided in PandaDoc. Review required.'}
+      </span>
+    </div>
+  ) : (
+    <>
+      <div className="pay-anomaly">
+        <Icon name="alert" strokeWidth={2.2} />
+        <span>Deed could not be generated. Check the branch has an agent contact, then retry.</span>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <Button variant="primary" size="sm" block onClick={doResendDeed} disabled={deedBusy}>
+          <Icon name="file" /> {deedBusy ? 'Working…' : 'Generate deed'}
+        </Button>
+      </div>
+    </>
+  )
+) : (
+  <div className="deed" style={{ opacity: 0.85 }}>
+    <span className="deed__ic" style={{ color: 'var(--ink-mute)' }}><Icon name="clock" strokeWidth={1.8} /></span>
+    <div className="grow">
+      <div className="deed__t">Deed not yet issued</div>
+      <div className="deed__s">
+        {d.status === 'paid' ? 'Deed sent for signature shortly after payment' : 'Issued once the guarantor fee is paid'}
+      </div>
+    </div>
+  </div>)}
             </CardBody>
           </Card>
 
