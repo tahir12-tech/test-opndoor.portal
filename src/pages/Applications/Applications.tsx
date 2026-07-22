@@ -102,8 +102,8 @@ export function Applications() {
 
   const effectiveScope = role === 'superadmin' ? ALL_PARTNERS : partnerScope;
   const scopeOpts = { role, scope: effectiveScope, partner: partner || undefined };
-  // #owner Chips recount within the selected period.
-  const counts = countByStatus({ ...scopeOpts, periodRange: range });
+  // #owner Chips recount within the selected period and the current filter state.
+  const counts = countByStatus({ ...scopeOpts, agency: agency || undefined, branch: branch || undefined, referrer: referrer || undefined, periodRange: range });
   // #13: the "Showing X of Y" denominator must match the active status tab.
   // Withdrawn/Expired are terminal and excluded from counts.all, so on those tabs
   // Y must be the tab's own count, not the operational total.

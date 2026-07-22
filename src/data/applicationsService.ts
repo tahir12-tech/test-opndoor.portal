@@ -146,9 +146,17 @@ function inPeriod(r: ApplicationSummary, range?: [Date, Date]): boolean {
   return ts >= range[0].getTime() && ts <= range[1].getTime();
 }
 
-export function countByStatus(opts: AppScopeOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number; withdrawn: number; expired: number } {
-  // #owner Chips recount within the selected period (sent-date bucketed).
-  const set = scopedSet(opts).filter((r) => inPeriod(r, opts.periodRange));
+export function countByStatus(opts: AppFilterOpts): { all: number; sent: number; paid: number; deed: number; refunded: number; awaiting: number; deliveryFailed: number; withdrawn: number; expired: number } {
+  // #owner Chips recount within the selected period (sent-date bucketed), and
+  // must follow the same partner/agency/branch/referrer filters as the rows.
+  let set = scopedSet(opts);
+  if (opts.partner) set = set.filter((r) => r.partner === opts.partner);
+  set = set.filter((r) => {
+    if (opts.branch && r.branch !== opts.branch) return false;
+    if (opts.agency && r.agency !== opts.agency) return false;
+    if (opts.referrer && r.referrer !== opts.referrer) return false;
+    return inPeriod(r, opts.periodRange);
+  });
   // 'refunded' and 'awaiting' overlap 'paid' (both keep status Paid by design), so
   // they are counted in addition to paid, not instead of it. all = sent+paid+deed.
   // 'deliveryFailed' is a cross-cut of Deed (issued but no reachable agent contact).

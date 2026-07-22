@@ -24,6 +24,19 @@ const opts = { role: 'superadmin' as const, scope: ALL_PARTNERS };
 describe('countByStatus + refunded chip (item 9)', () => {
   beforeEach(() => hydrateApplications(LIST, []));
 
+  it('counts respect partner, agency, branch and referrer filters', () => {
+    const rows: ApplicationSummary[] = [
+      { ref: 'GR-10', tenant: 'T GR-10', prop: '1 St', branch: 'B', agency: 'A', ben: '', rent: 1000, status: 'sent', date: '2026-06-01', owner: 1, partner: 'rightmove', referrer: 'Alice' },
+      { ref: 'GR-11', tenant: 'T GR-11', prop: '1 St', branch: 'B', agency: 'A', ben: '', rent: 1000, status: 'paid', date: '2026-06-01', owner: 1, partner: 'rightmove', referrer: null },
+      { ref: 'GR-12', tenant: 'T GR-12', prop: '1 St', branch: 'B', agency: 'A', ben: '', rent: 1000, status: 'deed', date: '2026-06-01', owner: 1, partner: 'rightmove', referrer: 'Alice' },
+      { ref: 'GR-13', tenant: 'T GR-13', prop: '1 St', branch: 'B2', agency: 'A2', ben: '', rent: 1000, status: 'paid', date: '2026-06-01', owner: 1, partner: 'other', referrer: 'Alice' },
+    ];
+    hydrateApplications(rows, []);
+
+    const c = countByStatus({ ...opts, partner: 'rightmove', agency: 'A', branch: 'B', referrer: 'Alice' } as any);
+    expect(c).toMatchObject({ all: 1, sent: 1, paid: 0, deed: 0, refunded: 0 });
+  });
+
   it('counts refunded separately and keeps All = Sent + Paid + Deed', () => {
     const c = countByStatus(opts);
     expect(c).toMatchObject({ all: 5, sent: 1, paid: 3, deed: 1, refunded: 2 });
