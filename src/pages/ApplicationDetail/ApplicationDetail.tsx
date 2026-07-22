@@ -127,6 +127,7 @@ export function ApplicationDetail() {
   const [soRole, setSoRole] = useState('');
   const [soEmail, setSoEmail] = useState('');
   const [soSave, setSoSave] = useState(false);
+  const [sendBusy, setSendBusy] = useState(false);
 
   // payment (Stripe, real mode)
   const [searchParams] = useSearchParams();
@@ -561,6 +562,7 @@ export function ApplicationDetail() {
       if (picked) c = { name: picked.name, email: picked.email, role: picked.role };
     }
     if (!c) return;
+    setSendBusy(true);
     try {
       // The database re-checks canSendDeed; Referrers may only send to the resolved contact.
       if (isReferrer) await sendDeedToAgent(d.ref);
@@ -568,6 +570,8 @@ export function ApplicationDetail() {
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Could not send the deed.');
       return;
+    } finally {
+      setSendBusy(false);
     }
     const who = role === 'superadmin' ? 'opndoor' : role === 'management' ? 'Management' : 'Referrer'; // #112
     setExtraActivity((prev) => [
@@ -992,14 +996,14 @@ export function ApplicationDetail() {
       {/* SEND DEED TO AGENT MODAL */}
       <Modal
         open={sendOpen}
-        onClose={() => setSendOpen(false)}
+        onClose={() => !sendBusy && setSendOpen(false)}
         width={460}
         title="Send deed to agent"
         sub="A copy of the Deed of Guarantee will be emailed to the agent contact for this branch."
         footer={
           <>
-            <Button variant="ghost" onClick={() => setSendOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={confirmSend} disabled={sendDisabled}>Send deed</Button>
+            <Button variant="ghost" onClick={() => !sendBusy && setSendOpen(false)} disabled={sendBusy}>Cancel</Button>
+            <Button variant="primary" onClick={() => void confirmSend()} disabled={sendDisabled || sendBusy}>{sendBusy ? 'Sending…' : 'Send deed'}</Button>
           </>
         }
       >
@@ -1031,7 +1035,7 @@ export function ApplicationDetail() {
                   <div className="send-opts">
                     {eff.list.map((c, i) => (
                       <label className="send-opt" key={i}>
-                        <input type="radio" name="send-to" checked={sendSel === String(i)} onChange={() => setSendSel(String(i))} />
+                        <input type="radio" name="send-to" checked={sendSel === String(i)} onChange={() => setSendSel(String(i))} disabled={sendBusy} />
                         <span className="send-opt__main">
                           <b>{c.name}</b>{c.role ? ` · ${c.role}` : ''}
                           <br />
@@ -1050,7 +1054,7 @@ export function ApplicationDetail() {
               )}
 
               <label className="send-opt send-opt--other">
-                <input type="radio" name="send-to" checked={sendSel === 'other'} onChange={() => setSendSel('other')} />
+                <input type="radio" name="send-to" checked={sendSel === 'other'} onChange={() => setSendSel('other')} disabled={sendBusy} />
                 <span className="send-opt__main">
                   <b>Send to another address</b>
                   <br />
@@ -1060,15 +1064,21 @@ export function ApplicationDetail() {
 
               <div className={`send-other${sendSel === 'other' ? ' is-open' : ''}`}>
                 <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="field"><label htmlFor="so-name">Name</label><input type="text" id="so-name" autoComplete="off" placeholder="Recipient name" value={soName} onChange={(e) => setSoName(e.target.value)} /></div>
-                  <div className="field"><label htmlFor="so-role">Role <span className="hint">Optional</span></label><input type="text" id="so-role" autoComplete="off" placeholder="e.g. Property manager" value={soRole} onChange={(e) => setSoRole(e.target.value)} /></div>
-                  <div className="field span-2"><label htmlFor="so-email">Email</label><input type="email" id="so-email" autoComplete="off" placeholder="name@example.co.uk" value={soEmail} onChange={(e) => setSoEmail(e.target.value)} /></div>
+                  <div className="field"><label htmlFor="so-name">Name</label><input type="text" id="so-name" autoComplete="off" placeholder="Recipient name" value={soName} onChange={(e) => setSoName(e.target.value)} disabled={sendBusy} /></div>
+                  <div className="field"><label htmlFor="so-role">Role <span className="hint">Optional</span></label><input type="text" id="so-role" autoComplete="off" placeholder="e.g. Property manager" value={soRole} onChange={(e) => setSoRole(e.target.value)} disabled={sendBusy} /></div>
+                  <div className="field span-2"><label htmlFor="so-email">Email</label><input type="email" id="so-email" autoComplete="off" placeholder="name@example.co.uk" value={soEmail} onChange={(e) => setSoEmail(e.target.value)} disabled={sendBusy} /></div>
                 </div>
-                <label className="send-save-note"><input type="checkbox" checked={soSave} onChange={(e) => setSoSave(e.target.checked)} /> <span>Also save this contact to the {d.branch} branch</span></label>
+                <label className="send-save-note"><input type="checkbox" checked={soSave} onChange={(e) => setSoSave(e.target.checked)} disabled={sendBusy} /> <span>Also save this contact to the {d.branch} branch</span></label>
               </div>
             </>
           )}
 
+          {sendBusy && (
+            <div className="send-busy" role="status" aria-live="polite">
+              <span className="send-busy__spinner" />
+              <span>Sending deed to the selected recipient…</span>
+            </div>
+          )}
           <p style={{ fontSize: 12.5, color: 'var(--ink-mute)', margin: '14px 0 0' }}>A copy of Guarantee_Deed_{d.ref}.pdf will be emailed to the {isReferrer ? 'recipient above' : 'selected recipient'}.</p>
         </div>
       </Modal>
