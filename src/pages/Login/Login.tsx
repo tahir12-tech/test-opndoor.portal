@@ -76,15 +76,15 @@ export function Login() {
   }
 
   // A refreshed password-only session lands here: resume the TOTP step.
-  useEffect(() => {
-    if (!SUPABASE_ENABLED || mfaSetup.current) return;
-    if (status === 'needsMfa' && step === 'creds') {
-      mfaSetup.current = true;
-      setMasked(authService.maskEmail(email));
-      void advanceToMfa();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  // useEffect(() => {
+  //   if (!SUPABASE_ENABLED || mfaSetup.current) return;
+  //   if (status === 'needsMfa' && step === 'creds') {
+  //     mfaSetup.current = true;
+  //     setMasked(authService.maskEmail(email));
+  //     void advanceToMfa();
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [status]);
 
   async function submitCreds(e: FormEvent) {
     e.preventDefault();
