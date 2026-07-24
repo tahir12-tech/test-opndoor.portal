@@ -185,7 +185,7 @@
 .tl-step--terminated .tl-step__note {
   color: var(--ink-mute, #7a7a8c);
 }
-.tl-step::after {
+/* .tl-step::after {
   content: '';
   position: absolute;
   top: 18px;
@@ -193,6 +193,17 @@
   right: calc(-50% + 22px);
   height: 2px;
   background: var(--deed);
+  z-index: 1;
+} */
+ .tl-step::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 22px;
+  right: 0%;
+  height: 2px;
+  background: var(--deed);
+  transform: translateX(18px);
   z-index: 1;
 }
 .tl-step:last-child::after {
