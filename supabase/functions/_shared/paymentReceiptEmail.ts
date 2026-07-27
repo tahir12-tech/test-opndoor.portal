@@ -77,7 +77,7 @@ function receiptTemplate(p: { title: string; lastName: string; propertyAddr: str
 /** Send the branded payment receipt to the tenant and record the activity entries. */
 export async function deliverPaymentReceipt(service: any, p: { appId: string; tenantEmail: string; title: string; lastName: string; propertyAddr: string; amount: string; guaranteeRef: string }): Promise<void> {
   if (!p.tenantEmail) return;
-  const tpl = receiptTemplate({ title: p.title, lastName: p.lastName, propertyAddr: p.propertyAddr, amount: p.amount, guaranteeRef: p.guaranteeRef, intendedFor: p.tenantEmail });
+  const tpl = receiptTemplate({ title: p.title, lastName: p.lastName, propertyAddr: p.propertyAddr, amount: p.amount, guaranteeRef: p.guaranteeRef });
   const res = await sendEmail({ subject: tpl.subject, html: tpl.html, to: p.tenantEmail });
   await service.from("activity_log").insert({
     application_id: p.appId,
