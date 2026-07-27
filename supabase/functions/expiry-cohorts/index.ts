@@ -27,7 +27,7 @@ const json = (body: unknown, status = 200) =>
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
 const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
+// const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
 
 function londonNow(): { hour: number; date: string } {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -168,13 +168,14 @@ Deno.serve(async (req) => {
       const csv = toCSV(rows);
       const filename = `opndoor-expiries-${cohortMonth}.csv`;
 
-      const dest = REVIEW_ADDRESS ? [REVIEW_ADDRESS] : recipients; // test build redirects to review
+      // const dest = REVIEW_ADDRESS ? [REVIEW_ADDRESS] : recipients; // test build redirects to review
+      const dest = recipients;
       const intended = recipients.join(", ");
       const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;"><tr><td align="center">
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
         <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#fff;">opndoor</span><span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span></td></tr>
-        ${REVIEW_ADDRESS ? `<tr><td style="padding:10px 16px;background:#f8eff9;border-bottom:1px solid rgba(39,29,95,0.1);font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">Test mode. This email was intended for ${intended} and redirected to you for review.</td></tr>` : ""}
+        ${""}
         <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#271d5f;">
           <p style="margin:0 0 14px;">Hello,</p>
           <p style="margin:0 0 14px;">Attached are the guarantees expiring in <b>${cohortMonth}</b> (${cohort.length}), soonest first, so you can arrange renewals or fresh referrals in good time. This cohort is sent six weeks before the month begins.</p>

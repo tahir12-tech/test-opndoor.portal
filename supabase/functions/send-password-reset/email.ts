@@ -8,7 +8,7 @@
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
 const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
+// const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
 
 export interface SendResult {
   ok: boolean;

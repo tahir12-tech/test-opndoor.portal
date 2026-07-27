@@ -18,7 +18,7 @@ const API = "https://api.pandadoc.com/public/v1";
 const KEY = (Deno.env.get("PANDADOC_API_KEY") ?? "").trim();
 const TEMPLATE_ID = (Deno.env.get("PANDADOC_TEMPLATE_ID") ?? "").trim();
 const WEBHOOK_KEY = (Deno.env.get("PANDADOC_WEBHOOK_SHARED_KEY") ?? "").trim();
-const REVIEW = (Deno.env.get("EMAIL_REVIEW_ADDRESS") ?? "").trim();
+// const REVIEW = (Deno.env.get("EMAIL_REVIEW_ADDRESS") ?? "").trim();
 // For the fallback signing-link email (when PandaDoc's own reminder is unavailable).
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
@@ -142,23 +142,23 @@ export async function createAndSend(a: DeedApp): Promise<DeedResult> {
 
     // Also notify the review address (PandaDoc's own email only reaches the
     // real recipient; this is a separate FYI copy via Resend).
-    if (REVIEW && RESEND_API_KEY) {
-      const reviewHtml = `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;"><tr><td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;">
-            <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#fff;">opndoor</span></td></tr>
-            <tr><td style="padding:10px 16px;background:#f8eff9;font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">Review copy. The deed-signing email was sent to ${a.tenant_email}.</td></tr>
-            <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#271d5f;">
-              <p style="margin:0 0 14px;">${message}</p>
-            </td></tr>
-          </table>
-        </td></tr></table></body></html>`;
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: EMAIL_FROM, to: [REVIEW], reply_to: REPLY_TO, subject: `[Review copy] ${subject}`, html: reviewHtml }),
-      }).catch(() => {});
-    }
+    // if (REVIEW && RESEND_API_KEY) {
+    //   const reviewHtml = `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
+    //     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;"><tr><td align="center">
+    //       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;">
+    //         <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#fff;">opndoor</span></td></tr>
+    //         <tr><td style="padding:10px 16px;background:#f8eff9;font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">Review copy. The deed-signing email was sent to ${a.tenant_email}.</td></tr>
+    //         <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#271d5f;">
+    //           <p style="margin:0 0 14px;">${message}</p>
+    //         </td></tr>
+    //       </table
+    //     </td></tr></table></body></html>`;
+    //   await fetch("https://api.resend.com/emails", {
+    //     method: "POST",
+    //     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+    //     body: JSON.stringify({ from: EMAIL_FROM, to: [REVIEW], reply_to: REPLY_TO, subject: `[Review copy] ${subject}`, html: reviewHtml }),
+    //   }).catch(() => {});
+    // }
 
     return { ok: true, documentId: docId, issueDateIso: issue.iso };
   } catch (e) {

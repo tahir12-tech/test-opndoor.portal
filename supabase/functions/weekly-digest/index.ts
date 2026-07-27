@@ -28,7 +28,7 @@ const json = (body: unknown, status = 200) =>
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
 const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
+// const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
 const APP_URL = (Deno.env.get("APP_URL") ?? "").replace(/\/$/, "");
 
 function londonNow(): { hour: number; date: string } {
@@ -205,8 +205,10 @@ Deno.serve(async (req) => {
       if (sentSet.has(d.partner_id)) { skipped += 1; continue; }
       if (d.sent + d.paid + d.deeds === 0) { skipped += 1; continue; }
 
-      const dest = REVIEW_ADDRESS ? [REVIEW_ADDRESS] : recipients; // test build redirects to review
-      const tpl = digestEmail({ partnerName: d.partner_name, rangeLabel, d, intended: recipients.join(", "), redirected: !!REVIEW_ADDRESS });
+       const dest = recipients;
+
+      // const dest = REVIEW_ADDRESS ? [REVIEW_ADDRESS] : recipients; // test build redirects to review
+        const tpl = digestEmail({ partnerName: d.partner_name, rangeLabel, d, intended: recipients.join(", "), redirected: false });
       if (!RESEND_API_KEY || dest.length === 0) { failed += 1; continue; }
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
