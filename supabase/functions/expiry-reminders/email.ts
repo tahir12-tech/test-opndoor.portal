@@ -58,7 +58,7 @@ export interface SendResult { ok: boolean; error?: string; to?: string; }
 export async function sendEmail(opts: { subject: string; html: string; to?: string }): Promise<SendResult> {
   if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured (RESEND_API_KEY not set)." };
   if (!opts.to) return { ok: false, error: "No recipient email provided." };
-  const recipients = [opts.to];
+  const recipients = opts.to.split(",").map((email) => email.trim()).filter(Boolean);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
