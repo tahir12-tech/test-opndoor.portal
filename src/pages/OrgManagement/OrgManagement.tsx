@@ -1077,7 +1077,7 @@ function requestCloseContacts() {
               options={[{ value: ALL_PARTNERS, label: 'All partners' }, ...getPartners().map((p) => ({ value: p.id, label: p.name }))]}
             />
           )}
-          <Button variant="ghost" size="sm"><Icon name="download" /> Export</Button>
+      
           {canManageOrg && (
             <Button variant="primary" size="sm" onClick={() => { setAgencyName(''); setAgencyGroup(''); setAgencyPartner(selectedPartner !== ALL_PARTNERS ? selectedPartner : ''); setAgencyContact({ name: '', email: '', phone: '' }); setAgencyOpen(true); }}><Icon name="plus" /> Add agency</Button>
           )}
