@@ -41,7 +41,7 @@ export async function lookupAddresses(postcodeRaw: string): Promise<AddressLooku
   if (!postcode) return { available: true, addresses: [] };
 
   try {
-    const url = `https://api.getaddress.io/find/${encodeURIComponent(postcode)}?api-key=${encodeURIComponent(KEY)}&expand=true`;
+    const url = `https://api.ideal-postcodes.co.uk/find/${encodeURIComponent(postcode)}?api-key=${encodeURIComponent(KEY)}&expand=true`;
     const res = await fetch(url);
     if (!res.ok) {
       return {
