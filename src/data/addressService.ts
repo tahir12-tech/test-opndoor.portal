@@ -130,9 +130,13 @@ export async function lookupAddresses(postcodeRaw: string): Promise<AddressLooku
     }
     const pc = String(results[0]?.postcode || postcode).toUpperCase();
     const addresses: AddressOption[] = results.map((a: any) => {
+
+      results.forEach((a, i) => {
+        console.log(`Address ${i}`, a);
+      });
       const line1 = a.line_1 || '';
       const line2 = [a.line_2, a.line_3, a.line_4].filter(Boolean).join(', ');
-      const city = a.town_or_city || a.locality || '';
+      const city = a.post_town || '';
       const county = a.county || '';
       return { line1, line2, city, county, postcode: pc, label: [line1, line2, city].filter(Boolean).join(', ') };
     });
