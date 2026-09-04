@@ -12,6 +12,8 @@ export interface PaymentConfirmation {
   reference?: string;
   amount?: number;
   paid?: boolean;
+  /** Paid and then refunded: terminal, and no signing link is ever minted. */
+  refunded?: boolean;
   deedReady?: boolean;
   deedSigned?: boolean;
   deedError?: boolean;
