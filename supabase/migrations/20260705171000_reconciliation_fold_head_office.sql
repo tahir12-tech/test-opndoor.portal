@@ -5,6 +5,8 @@
 -- counts DECISIONS: one card per agency (+ its head office), one per real branch.
 -- A new `folded_head_office` flag lets the card note the folded head office.
 -- =====================================================================
+drop function if exists public.reconciliation_queue();
+
 create or replace function public.reconciliation_queue()
 returns table (
   entity_id uuid, entity_type text, name text, parent text,
