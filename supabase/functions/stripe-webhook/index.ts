@@ -246,10 +246,7 @@ Deno.serve(async (req) => {
           // Preserve the PandaDoc document ID locally so we can still attempt
           // to void the document, but immediately remove it from the application
           // so a timeout/failure cannot leave a live signing link attached.
-          if (
-            appRow.pandadoc_document_id &&
-            appRow.deed_state === "awaiting_tenant"
-          ) {
+          if (appRow.pandadoc_document_id) {
             const pandadocDocumentId = appRow.pandadoc_document_id;
 
             // Immediately detach the live signing document from the application.
