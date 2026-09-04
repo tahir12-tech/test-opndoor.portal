@@ -215,7 +215,13 @@ Deno.serve(async (req) => {
           p_refund_id: refundId,
           p_amount: refundAmount,
         });
-        if (refundErr) throw new Error(`apply_stripe_refund failed: ${refundErr.message}`);
+        if (refundErr) {
+          // Nothing has happened yet, so drop the dedup row: without it the 500
+          // below is deduped to a 200 on Stripe retry and the refund — including
+          // expiring the signing link — is never applied at all.
+          await service.from("stripe_events").delete().eq("id", event.id);
+          throw new Error(`apply_stripe_refund failed: ${refundErr.message}`);
+        }
 
         const { data: appRow } = await service
           .from("applications")
@@ -243,28 +249,20 @@ Deno.serve(async (req) => {
             });
           }
 
-          // Preserve the PandaDoc document ID locally so we can still attempt
-          // to void the document, but immediately remove it from the application
-          // so a timeout/failure cannot leave a live signing link attached.
+          // The refund must kill any outstanding signing link. deed_state is a
+          // constrained column ('awaiting_tenant'|'executed'|'declined'|'voided'|
+          // 'error'), so it is only moved to a value the constraint accepts and
+          // only once PandaDoc has confirmed the document is unsignable — a
+          // rejected write here would otherwise leave the link live and unnoticed.
           if (
             appRow.pandadoc_document_id &&
-            appRow.deed_state === "awaiting_tenant"
+            appRow.deed_state !== "executed"
           ) {
             const pandadocDocumentId = appRow.pandadoc_document_id;
-
-            // Immediately detach the live signing document from the application.
-            // This protects the application even if PandaDoc times out/fails.
-            await service
-              .from("applications")
-              .update({
-                pandadoc_document_id: null,
-                deed_state: "refund_hold",
-              })
-              .eq("id", appRow.id);
-
             const voidResult = await voidDocument(pandadocDocumentId);
 
-            if (voidResult.ok) {
+            if (voidResult.ok && !voidResult.signed) {
+              // Confirmed dead at PandaDoc: detach the document from the application.
               await service
                 .from("applications")
                 .update({
@@ -282,12 +280,19 @@ Deno.serve(async (req) => {
                 visibility: "business",
               });
             } else {
+              // Not confirmed dead (timeout, rejection, or already signed). The
+              // document id is deliberately KEPT on the application so the
+              // completion webhook can still match it and refuse to issue a deed
+              // on a refunded application, instead of the signature landing on an
+              // unmatched document and passing unnoticed.
+              const reason = voidResult.signed
+                ? "the tenant had already signed it"
+                : voidResult.error ?? "unknown error";
+
               await service.from("activity_log").insert({
                 application_id: appRow.id,
                 kind: "deed_void_failed",
-                message: `Deed could not be automatically voided after refund: ${
-                  voidResult.error ?? "unknown error"
-                }. Signing document was detached from the application and manual remediation is required.`,
+                message: `Deed signing link could NOT be expired after refund: ${reason}. The signing link may still be live — manual remediation required.`,
                 actor: "System",
                 visibility: "internal",
               });
@@ -295,9 +300,7 @@ Deno.serve(async (req) => {
               try {
                 await service.rpc("report_ops_incident", {
                   p_type: "deed_void_failed",
-                  p_detail: `App ${
-                    appRow.guarantee_ref
-                  }: PandaDoc document ${pandadocDocumentId} could not be voided after refund. The document ID has been removed from the application and manual remediation is required.`,
+                  p_detail: `App ${appRow.guarantee_ref}: PandaDoc document ${pandadocDocumentId} could not be expired after refund (${reason}). The signing link may still be live.`,
                 });
               } catch {
                 /* never mask */

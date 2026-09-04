@@ -166,6 +166,7 @@ export async function createAndSend(a: DeedApp): Promise<DeedResult> {
   }
 }
 
+const VOID_TIMEOUT_MS = 10_000;
 const TERMINAL_STATUSES = ["document.completed", "document.declined", "document.voided", "document.expired", "document.paid"];
 function prettyStatus(s: string): string {
   return ({
@@ -353,21 +354,67 @@ async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindCo
  * PandaDoc has no "voided" verb via API; the supported cancel path is setting
  * status Expired (11), allowed from Sent/Viewed. An already-terminal or missing
  * document is treated as effectively gone so regeneration can proceed.
+ *
+ * Every call is time-bounded and retried: a hung PandaDoc request must fail fast
+ * rather than burn the caller's wall clock (a refund that times out here used to
+ * leave the signing link live). A non-2xx PATCH is never trusted on its own —
+ * the document's real status is re-read, so `ok` means "confirmed unsignable",
+ * and `signed` distinguishes the one terminal state that is not a safe outcome.
  */
-export async function voidDocument(documentId: string): Promise<{ ok: boolean; alreadyGone?: boolean; error?: string }> {
+async function pandadocFetch(url: string, init: RequestInit, tries = 3): Promise<Response | null> {
+  let last: unknown = null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(VOID_TIMEOUT_MS) });
+      // Retry only what a retry can fix (rate limit / transient upstream).
+      if (res.status === 429 || res.status >= 500) {
+        last = `HTTP ${res.status}`;
+        if (i < tries - 1) { await new Promise((r) => setTimeout(r, 1000 * (i + 1))); continue; }
+      }
+      return res;
+    } catch (e) {
+      last = e;
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+  if (last) console.error(`PandaDoc request gave up on ${url}: ${last instanceof Error ? last.message : String(last)}`);
+  return null;
+}
+
+/** Current PandaDoc status, or null when it cannot be read. */
+async function documentStatus(documentId: string): Promise<string | null> {
+  const res = await pandadocFetch(`${API}/documents/${documentId}`, { headers: headers() });
+  if (!res?.ok) return null;
+  try {
+    return (await res.json())?.status ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function voidDocument(documentId: string): Promise<{ ok: boolean; alreadyGone?: boolean; signed?: boolean; error?: string }> {
   if (!pandadocConfigured()) return { ok: false, error: "PandaDoc is not configured." };
   try {
-    const res = await fetch(`${API}/documents/${documentId}/status`, {
-      method: "PATCH",
-      headers: headers(),
-      body: JSON.stringify({ status: 11, note: "Superseded by a regenerated deed.", notify_recipients: false }),
-    });
-    if (res.ok) return { ok: true };
-    const body = (await res.text()).slice(0, 200);
-    // Already terminal / not found: nothing left to sign, so let regeneration continue.
-    if ([400, 404, 409].includes(res.status)) return { ok: true, alreadyGone: true, error: `PandaDoc void ${res.status}: ${body}` };
-    return { ok: false, error: `PandaDoc void ${res.status}: ${body}` };
+  const res = await pandadocFetch(`${API}/documents/${documentId}/status`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({ status: 11, note: "Superseded by a regenerated deed.", notify_recipients: false }),
+  });
+  if (res?.ok) return { ok: true };
+
+  const detail = res ? `PandaDoc void ${res.status}: ${(await res.text()).slice(0, 200)}` : "PandaDoc void request timed out.";
+  // The PATCH was rejected or never landed. Re-read the document rather than
+  // assuming: only a terminal status proves the link can no longer be signed.
+  const status = await documentStatus(documentId);
+  if (status && TERMINAL_STATUSES.includes(status)) {
+    return { ok: true, alreadyGone: true, signed: status === "document.completed", error: detail };
+  }
+  // A 404 means there is no such document left to sign.
+  if (!status && res?.status === 404) return { ok: true, alreadyGone: true, error: detail };
+  return { ok: false, error: status ? `${detail} (document is still ${prettyStatus(status)})` : detail };
   } catch (e) {
+    // Never throw: the refund caller must be able to log and alert on a failed
+    // void rather than 500 on an event Stripe has already been told is handled.
     return { ok: false, error: `PandaDoc void failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }

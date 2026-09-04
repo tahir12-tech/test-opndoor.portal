@@ -11,7 +11,7 @@
 // log for review; no status change. Other statuses are acknowledged.
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { verifyWebhook, downloadPdf } from "../_shared/pandadoc.ts";
+import { verifyWebhook, downloadPdf, voidDocument } from "../_shared/pandadoc.ts";
 import { deliverDeedToAgent } from "../_shared/deedEmail.ts";
 import { deliverExecutedDeedToTenant } from "../_shared/executedDeedEmail.ts";
 import { titleCaseAddress } from "../_shared/text.ts";
@@ -43,10 +43,23 @@ Deno.serve(async (req) => {
     if (insErr) continue; // duplicate delivery -> skip
 
     const { data: app } = await service.from("applications")
-      .select("id, guarantee_ref, branch_id, tenant_title, tenant_first_name, tenant_last_name, tenant_email, prop_addr1, prop_postcode, tenancy_start, agency:agencies(name)")
+      .select("id, guarantee_ref, payment_state, branch_id, tenant_title, tenant_first_name, tenant_last_name, tenant_email, prop_addr1, prop_postcode, tenancy_start, agency:agencies(name)")
       .eq("pandadoc_document_id", docId).maybeSingle();
 
     if (status === "document.completed") {
+      // A refunded application must never be issued a deed. If a signing link
+      // outlived the refund (the void timed out or was rejected), this is the last
+      // line of defence: nothing is executed, no deed emails go out, the link is
+      // retired now, and ops are alerted rather than the signature passing unnoticed.
+      if (app && app.payment_state === "refunded") {
+        await voidDocument(docId);
+        await service.from("applications").update({ deed_state: "voided", pandadoc_document_id: null }).eq("id", app.id);
+        await service.from("activity_log").insert({ application_id: app.id, kind: "deed_error", message: "BLOCKED: the tenant signed the deed after the payment was refunded. No deed has been issued and no deed emails were sent. Review required.", actor: "System", visibility: "internal" });
+        try {
+          await service.rpc("report_ops_incident", { p_type: "deed_signed_after_refund", p_detail: `App ${app.guarantee_ref}: PandaDoc document ${docId} was signed after the payment was refunded. Deed issuance was blocked.` });
+        } catch { /* never mask */ }
+        continue;
+      }
       let path: string | null = null;
       const pdf = await downloadPdf(docId);
       if (pdf && app) {

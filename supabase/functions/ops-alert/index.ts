@@ -37,6 +37,8 @@ const LABELS: Record<string, string> = {
   deed_delivery_failed: "Deed email to the agent failed to send",
   deed_reminder_failed: "Deed signature reminder failed to send",
   deed_undelivered: "Deed issued but not delivered (no agent contact)",
+  deed_void_failed: "Refunded, but the deed signing link could NOT be expired (link may be live)",
+  deed_signed_after_refund: "Deed signed AFTER refund, issuance blocked (review required)",
   expiry_reminder_email_failed: "Expiry reminder email failed to send",
   payment_reminder_email_failed: "Payment reminder email failed to send",
   payment_email_failed: "Payment email failed to send",
