@@ -52,9 +52,12 @@ export interface FullApp {
   rent: number;
   /** Commission rates SNAPSHOTTED at creation (fractions of one month's rent).
       Every commission/settlement/league/export figure reads these, never the
-      partner's live rate, so editing a partner's rate never moves history. */
-  partnerRate: number;
-  agentRate: number;
+      partner's live rate, so editing a partner's rate never moves history.
+      null = WITHHELD from this viewer (a Referrer never receives commission
+      rates; see Partner.partnerRate). Treat null as "no commission figure",
+      not as zero-with-a-label. */
+  partnerRate: number | null;
+  agentRate: number | null;
   sentAt: Date | null;
   paidAt: Date | null;
   deedAt: Date | null;

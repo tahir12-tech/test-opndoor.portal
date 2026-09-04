@@ -80,6 +80,24 @@ Read-model views (`security_invoker`, so they inherit the caller's RLS):
   their partner's agencies/branches/contacts; cannot write contacts.
 - Add-on-the-fly (agencies/branches) allowed for any role within their partner;
   editing canonical records is admin-only.
+- **Commission rates are confidential and column-scoped, not row-scoped.**
+  `partners.partner_rate/agent_rate` and `applications.partner_rate/agent_rate`
+  are readable by opndoor admin and by a partner's own Management only — never by
+  a Referrer, who could otherwise read what opndoor pays their partner. RLS
+  cannot hide a column, so `anon`/`authenticated` hold **per-column** grants on
+  those two tables that exclude the four rate columns, and the rates arrive
+  instead through `partner_commission_rates` / `application_commission_rates`
+  (owner-rights views that re-assert AAL2 + the partner scope). Referrer-callable
+  RPCs returning a whole `applications` row mask the rates via
+  `mask_commission_rates`. Ships as two migrations so it can go out under a live
+  service: `20260904120000_commission_rate_confidentiality.sql` (additive — views,
+  masking, the grant helper) then, **only once the front end that reads those views
+  is deployed**, `20260904120500_revoke_commission_rate_columns.sql` (the cut-over).
+  Proof C9.
+  **Consequence for future migrations:** after adding a column to `partners` or
+  `applications`, end the migration with
+  `select public.reapply_rate_column_privileges();` or the new column will be
+  invisible to the app.
 - The `canAmendTenancyStart` / `canSendDeed` rules are enforced in the database
   by the SECURITY DEFINER RPCs (`amend_tenancy_start`, `send_deed_to_agent`),
   which re-check AAL2, role, ownership and deed state: a referrer may amend only

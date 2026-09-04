@@ -1,0 +1,32 @@
+-- =====================================================================
+-- Commission-rate confidentiality — PART 2 of 2: take the columns away
+--
+-- This is the cut-over. It removes `anon`/`authenticated` SELECT/INSERT/UPDATE on
+--   partners.partner_rate, partners.agent_rate,
+--   applications.partner_rate, applications.agent_rate
+-- by re-granting those two tables column by column for every OTHER column, which
+-- is the only way to drop a column privilege a role holds table-wide. After this,
+-- a Referrer cannot read what opndoor pays their partner by any client route, and
+-- cannot hand-write a rate onto their own Sent application either.
+--
+-- PRE-CONDITIONS — check both before applying to a live service:
+--   1. PART 1 (20260904120000_commission_rate_confidentiality.sql) is applied, so
+--      partner_commission_rates / application_commission_rates exist and the
+--      referrer-callable RPCs mask their returned rates.
+--   2. The front end that reads those two views IS DEPLOYED. The previous client
+--      selects partners.partner_rate and applications.partner_rate directly in its
+--      one data load, so applying this underneath it breaks sign-in for everyone
+--      (hydrate throws "permission denied for table partners"). This is the whole
+--      reason the change ships as two migrations.
+--
+-- Rollback, if a deploy has to be reverted: re-grant the table privilege
+--   grant select, insert, update on public.partners, public.applications to anon, authenticated;
+-- which restores the previous (leaky) state — the views and the RPC masking from
+-- PART 1 keep working either way, so prefer rolling the front end forward.
+--
+-- Verify with proof C9 in supabase/SECURITY-PROOF.md. And remember the standing
+-- rule this creates: a later migration that adds a column to either table must end
+-- with `select public.reapply_rate_column_privileges();`.
+-- =====================================================================
+
+select public.reapply_rate_column_privileges();

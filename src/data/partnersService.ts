@@ -123,7 +123,9 @@ export interface PartnerAuditEntry {
 // Mock/test audit store, keyed by partner id (slug). Supabase mode uses the
 // partner_audit table + update_partner_settings RPC instead.
 const PARTNER_AUDIT: Record<string, PartnerAuditEntry[]> = {};
-const pct = (f: number): string => fmtRatePct(f);
+// A withheld rate (null) has no percentage to record; the Manage Partner screen
+// that drives this is opndoor-admin only, so in practice it is never null here.
+const pct = (f: number | null): string => (f == null ? '—' : fmtRatePct(f));
 
 /**
  * Persist a partner-settings edit. Supabase mode calls the update_partner_settings

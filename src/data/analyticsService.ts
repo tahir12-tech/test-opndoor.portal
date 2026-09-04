@@ -132,12 +132,14 @@ function liveDashboard(role: Role, period: Period, scope: PartnerScope): Dashboa
   // the "% of one month's rent" label always reconciles with the £ figure beside it
   // and never moves when a partner's live rate is later edited. Only when the period
   // has no fees at all (nothing to reconcile) do we fall back to the current headline
-  // rate as an indicative label.
+  // rate as an indicative label — and when even that is withheld (null: a referrer's
+  // session never carries commission rates) the label is an em dash, never an
+  // invented percentage.
   const live = getRatesFor(scope);
-  const effRate = (net: number, excl: number, fallback: number) =>
-    a.feesGross ? (net + excl) / a.feesGross : fallback;
-  const pPct = fmtRatePct(effRate(a.partnerCommNet, a.partnerCommExcl, live.partner));
-  const aPct = fmtRatePct(effRate(a.agentCommNet, a.agentCommExcl, live.agent));
+  const effRate = (net: number, excl: number, fallback: number | null): string =>
+    a.feesGross ? fmtRatePct((net + excl) / a.feesGross) : fallback == null ? '—' : fmtRatePct(fallback);
+  const pPct = effRate(a.partnerCommNet, a.partnerCommExcl, live.partner);
+  const aPct = effRate(a.agentCommNet, a.agentCommExcl, live.agent);
   // Under an all-partners scope the £ amounts blend per-partner rates, so a single
   // "%" descriptor would not reconcile with the figure - label it per-partner.
   const blended = !isRef && scope === ALL_PARTNERS;
@@ -156,14 +158,19 @@ function liveDashboard(role: Role, period: Period, scope: PartnerScope): Dashboa
     guaranteed: fmtBig(a.guaranteed),
     deedcount: a.deed.toLocaleString('en-GB'),
     fees: fmtMoney(a.feesGross),
+    // Commission is Management/opndoor-admin only. A referrer is never shown a
+    // commission figure (#79 League, #109 exports; the Dashboard's commission card
+    // is RoleOnly superadmin/management) and their session does not even carry the
+    // rates, so these four read as WITHHELD rather than being computed from a
+    // withheld rate. A referrer's own card shows referral performance instead.
     commTag: isRef
-      ? `Your agent commission · ${aPct} of one month's rent, net of refunds`
+      ? 'Commission is not shown to referrers'
       : blended ? `Partner commission · per-partner rates, net of refunds` : `Partner · ${pPct} of one month's rent, net of refunds`,
-    commHeadline: isRef ? fmtMoney(a.agentCommNet) : fmtMoney(a.partnerCommNet),
+    commHeadline: isRef ? '—' : fmtMoney(a.partnerCommNet),
     commSecondLbl: isRef
-      ? `Passed to opndoor as partner (${pPct}, net)`
+      ? ''
       : blended ? 'Agent commission (per-partner rates, net of refunds)' : `Agent commission (${aPct} of one month's rent, net)`,
-    commSecondVal: isRef ? fmtMoney(a.partnerCommNet) : fmtMoney(a.agentCommNet),
+    commSecondVal: isRef ? '—' : fmtMoney(a.agentCommNet),
     rent: fmtMoney(a.avgRent),
     stuckSent: a.stuckSent.toLocaleString('en-GB'),
     stuckPaid: a.stuckPaid.toLocaleString('en-GB'),
@@ -205,8 +212,11 @@ function synthDashboard(role: Role, period: PeriodDef | Period, scope: PartnerSc
   const kf = paid / basePaid;
   const baseStuck = isRef ? [8, 3] : [74, 27];
   const rates = getRatesFor(scope);
-  const pPct = fmtRatePct(rates.partner);
-  const aPct = fmtRatePct(rates.agent);
+  // Same rule as the live path: a withheld rate has no percentage to show.
+  const pRate = rates.partner ?? 0;
+  const aRate = rates.agent ?? 0;
+  const pPct = rates.partner == null ? '—' : fmtRatePct(rates.partner);
+  const aPct = rates.agent == null ? '—' : fmtRatePct(rates.agent);
 
   return {
     sub: isRef
@@ -222,10 +232,11 @@ function synthDashboard(role: Role, period: PeriodDef | Period, scope: PartnerSc
     guaranteed: fmtBig(deed * ANNUAL),
     deedcount: deed.toLocaleString('en-GB'),
     fees: fmtMoney(feesNum),
-    commTag: isRef ? `Your agent commission · ${aPct} of one month's rent` : `Partner · ${pPct} of one month's rent`,
-    commHeadline: isRef ? fmtMoney(feesNum * rates.agent) : fmtMoney(feesNum * rates.partner),
-    commSecondLbl: isRef ? `Passed to opndoor as partner (${pPct})` : `Agent commission (${aPct} of one month's rent)`,
-    commSecondVal: isRef ? fmtMoney(feesNum * rates.partner) : fmtMoney(feesNum * rates.agent),
+    // Commission is never shown to a referrer (see the live path above).
+    commTag: isRef ? 'Commission is not shown to referrers' : `Partner · ${pPct} of one month's rent`,
+    commHeadline: isRef ? '—' : fmtMoney(feesNum * pRate),
+    commSecondLbl: isRef ? '' : `Agent commission (${aPct} of one month's rent)`,
+    commSecondVal: isRef ? '—' : fmtMoney(feesNum * aRate),
     rent: '£2,180',
     stuckSent: Math.round(baseStuck[0] * kc).toString(),
     stuckPaid: Math.round(baseStuck[1] * kc).toString(),
@@ -235,9 +246,9 @@ function synthDashboard(role: Role, period: PeriodDef | Period, scope: PartnerSc
     agencyScope: isRef ? 'your agency' : 'by agency',
     referrerTitle: isRef ? 'Your monthly volume' : 'Volume by referrer',
     referrerScope: isRef ? 'recent months' : 'top performers',
-    branches: synthEntity('branch', scaleRows(shape.branches, kc, kf), rates.partner, rates.agent),
-    agencies: synthEntity('agency', scaleRows(shape.agencies, kc, kf), rates.partner, rates.agent),
-    referrers: synthEntity('referrer', scaleRows(shape.referrers, kc, kf), rates.partner, rates.agent),
+    branches: synthEntity('branch', scaleRows(shape.branches, kc, kf), pRate, aRate),
+    agencies: synthEntity('agency', scaleRows(shape.agencies, kc, kf), pRate, aRate),
+    referrers: synthEntity('referrer', scaleRows(shape.referrers, kc, kf), pRate, aRate),
     live: false,
     feesGross: fmtMoney(feesNum),
     refunds: signedNeg(0),
@@ -262,7 +273,9 @@ export type TrendMeasure = 'commission' | 'value' | 'count';
  */
 export function getTrend(view: TrendView, role: Role, scope: PartnerScope): TrendRow[] {
   if (liveAvailable()) return liveTrend(view, role, scope);
-  const rate = getRatesFor(scope).partner;
+  // The commission measure is Management/admin only (the trend card is RoleOnly),
+  // so a withheld rate contributes nothing rather than a substituted default.
+  const rate = getRatesFor(scope).partner ?? 0;
   if (view === 'month') {
     return TREND_MONTHS.map((m) => { const fees = Math.round(m[1] * AVG_RENT * 0.8); return { label: m[0], count: m[1], fees, comm: Math.round(fees * rate) }; });
   }

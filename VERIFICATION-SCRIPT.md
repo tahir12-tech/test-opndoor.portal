@@ -332,6 +332,13 @@ back. Full detail in `supabase/SECURITY-PROOF.md`; the load-bearing checks:
     OWN executed deed = BLOCKED; send OWN deed = ALLOWED; send NON-owned = BLOCKED;
     one-off recipient/save as a Referrer = BLOCKED.
 61. **Contact writes (Priya):** run C7. **Expect:** a Referrer cannot write contacts.
+61b. **Commission-rate confidentiality:** run C9. **Expect:** the column-privilege
+    query returns **no rows**; as Priya every rate read/write is `DENIED` and both
+    `*_commission_rates` views return 0 rows; `mark_withdrawn` hands her back nulls for
+    both rates; as Tom exactly his own partner's rates appear and no other's; at AAL1
+    both views return nothing. Also confirm on screen: Priya's Dashboard shows the
+    "Your referral performance" card (no commission card), and her exports carry no
+    commission column.
 
 ---
 

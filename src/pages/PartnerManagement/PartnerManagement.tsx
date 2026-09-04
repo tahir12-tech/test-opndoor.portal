@@ -28,7 +28,9 @@ const STATUS_PILL: Record<PartnerStatus, [string, PillVariant]> = {
 };
 const initials = (n: string) => n.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 // One decimal, never rounded, so a 9.5% rate populates the editor as "9.5" (not "10").
-const asPct = (frac: number | undefined, fallback: number) => Number(((frac != null ? frac : fallback) * 100).toFixed(1));
+// frac is null when the rate is withheld from the viewer; this screen is
+// opndoor-admin only, so that only happens for a partner with no rate yet.
+const asPct = (frac: number | null | undefined, fallback: number) => Number(((frac != null ? frac : fallback) * 100).toFixed(1));
 
 const AUDIT_LABEL: Record<string, string> = {
   partner_rate: 'Partner commission', agent_rate: 'Agent commission',

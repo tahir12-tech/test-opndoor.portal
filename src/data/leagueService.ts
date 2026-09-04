@@ -90,9 +90,11 @@ export function getLeague(view: LeagueView, opts: LeagueOpts): LeagueRow[] {
     });
   }
 
+  // Commission columns are Management/admin only (the referrer board never carries
+  // them, #79), so a withheld rate contributes zero instead of a substituted default.
   rows.forEach((r) => {
-    r.partnerComm = r.fees * rates.partner;
-    r.agentComm = r.fees * rates.agent;
+    r.partnerComm = r.fees * (rates.partner ?? 0);
+    r.agentComm = r.fees * (rates.agent ?? 0);
   });
   return rows;
 }

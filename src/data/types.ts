@@ -34,9 +34,13 @@ export interface Partner {
   primary?: boolean;
   users: number;
   apps: number;
-  /** Per-partner commission rates (fractions of one month's rent). Never hard-coded. */
-  partnerRate: number;
-  agentRate: number;
+  /** Per-partner commission rates (fractions of one month's rent). Never hard-coded.
+      null = WITHHELD from this viewer: the rates are commercially confidential and
+      the database gives them only to opndoor admin and to that partner's own
+      Management, so a Referrer's session never carries them. Never substitute a
+      default for null — a withheld rate must read as "—", not as a made-up figure. */
+  partnerRate: number | null;
+  agentRate: number | null;
   /** #79 What a referrer sees on the League Referrers tab for this partner.
       full = peers ranked with fees + counts; rankings = counts only; private =
       own performance only. Commission is never shown to referrers. Default full. */
@@ -46,8 +50,9 @@ export interface Partner {
 export type LeaderboardMode = 'full' | 'rankings' | 'private';
 
 export interface CommissionRates {
-  partner: number;
-  agent: number;
+  /** null = withheld from this viewer (see Partner.partnerRate). */
+  partner: number | null;
+  agent: number | null;
 }
 
 /* ---------- Organisation hierarchy ---------- */
