@@ -39,12 +39,12 @@ Deno.serve(async (req) => {
 
     const { data: app, error } = await userClient
       .from("applications")
-      .select("id, status, deed_state, pandadoc_document_id, guarantee_ref, tenant_first_name, tenant_last_name,tenant_email")
+      .select("id, status, payment_state, deed_state, pandadoc_document_id, guarantee_ref, tenant_first_name, tenant_last_name,tenant_email")
       .eq("guarantee_ref", ref)
       .maybeSingle();
     if (error) return json({ ok: false, error: error.message }, 400);
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
-    if (app.status !== "paid") return json({ ok: false, error: "The deed can only be (re)sent while the application is Paid and awaiting execution." }, 400);
+    if (app.status !== "paid" || app.payment_state === "refunded") return json({ ok: false, error: "The deed can only be (re)sent while the application is Paid and awaiting execution." }, 400);
 
     const service = createClient(SUPABASE_URL, SERVICE);
     if (app.deed_state === "awaiting_tenant" && app.pandadoc_document_id) {

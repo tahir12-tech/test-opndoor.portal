@@ -210,11 +210,12 @@ Deno.serve(async (req) => {
       if (pi) {
         const refundAmount = (c.amount_refunded ?? 0) / 100;
 
-        await service.rpc("apply_stripe_refund", {
+        const { error: refundErr } = await service.rpc("apply_stripe_refund", {
           p_payment_intent: pi,
           p_refund_id: refundId,
           p_amount: refundAmount,
         });
+        if (refundErr) throw new Error(`apply_stripe_refund failed: ${refundErr.message}`);
 
         const { data: appRow } = await service
           .from("applications")

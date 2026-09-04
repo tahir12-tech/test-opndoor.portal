@@ -50,12 +50,12 @@ Deno.serve(async (req) => {
     // RLS-scoped read: the caller must be able to see the application.
     const { data: app, error } = await userClient
       .from("applications")
-      .select("id, status, deed_state, pandadoc_document_id")
+      .select("id, status, payment_state, deed_state, pandadoc_document_id")
       .eq("guarantee_ref", ref)
       .maybeSingle();
     if (error) return json({ ok: false, error: error.message }, 400);
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
-    if (app.status !== "paid") return json({ ok: false, error: "A deed can only be voided and regenerated while the application is Paid and awaiting execution." }, 400);
+    if (app.status !== "paid" || app.payment_state === "refunded") return json({ ok: false, error: "A deed can only be voided and regenerated while the application is Paid and awaiting execution." }, 400);
 
     const service = createClient(SUPABASE_URL, SERVICE);
 

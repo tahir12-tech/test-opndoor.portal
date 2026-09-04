@@ -404,10 +404,11 @@ export async function verifyWebhook(rawBody: string, signature: string): Promise
 export async function generateDeed(service: any, appId: string, reissue = false): Promise<DeedResult> {
   const { data: app } = await service
     .from("applications")
-    .select("id, guarantee_ref, tenant_first_name, tenant_last_name, tenant_email, tenancy_start, prop_addr1, prop_addr2, prop_city, prop_postcode, branch_id")
+    .select("id, guarantee_ref, tenant_first_name, tenant_last_name, tenant_email, tenancy_start, prop_addr1, prop_addr2, prop_city, prop_postcode, branch_id, payment_state")
     .eq("id", appId)
     .maybeSingle();
   if (!app) return { ok: false, error: "Application not found." };
+  if (app.payment_state === "refunded") return { ok: false, error: "A deed cannot be generated for a refunded application." };
 
   const { data: contact } = await service.rpc("effective_primary_contact", { p_branch: app.branch_id });
   const c = Array.isArray(contact) ? contact[0] : contact;

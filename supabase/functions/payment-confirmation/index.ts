@@ -81,9 +81,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!app) return json({ found: false });
 
-    const paid = app.payment_state === "paid" || (!!app.status && app.status !== "sent");
+    const paid = app.payment_state !== "refunded" && (app.payment_state === "paid" || (!!app.status && app.status !== "sent"));
     const amount = app.paid_amount != null ? Number(app.paid_amount) : Number(app.monthly_rent ?? 0);
-    const deedReady = app.deed_state === "awaiting_tenant" && !!app.pandadoc_document_id;
+    const deedReady = app.payment_state !== "refunded" && app.deed_state === "awaiting_tenant" && !!app.pandadoc_document_id;
     const deedSigned = app.deed_state === "executed";
     const deedError = app.deed_state === "error";
 
