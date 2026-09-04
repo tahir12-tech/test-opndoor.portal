@@ -101,7 +101,14 @@ Deno.serve(async (req) => {
       const refundId = c.refunds?.data?.[0]?.id ?? c.id;
       if (pi) {
         const refundAmount = (c.amount_refunded ?? 0) / 100;
-        await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
+        const { error: refundErr } = await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
+        if (refundErr) {
+          // Nothing has happened yet, so drop the dedup row: without it the 500
+          // below is deduped to a 200 on Stripe retry and the refund — including
+          // expiring the signing link — is never applied at all.
+          await service.from("stripe_events").delete().eq("id", event.id);
+          throw new Error(`apply_stripe_refund failed: ${refundErr.message}`);
+        }
         const { data: appRow } = await service.from("applications")
           .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode, pandadoc_document_id, deed_state")
           .eq("stripe_payment_intent_id", pi).maybeSingle();
@@ -110,26 +117,53 @@ Deno.serve(async (req) => {
           if (appRow.refund_after_start) {
             await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
           }
-            if (appRow.pandadoc_document_id && appRow.deed_state === "awaiting_tenant") {
-          const docId = appRow.pandadoc_document_id;
+          // The refund must expire the tenant's PandaDoc signing link. voidDocument
+          // reports ok only once PandaDoc confirms the document is unsignable, so
+          // the application is marked voided ONLY on that confirmation. Marking it
+          // voided regardless is what left a live link behind a "voided" record.
+          if (appRow.pandadoc_document_id && appRow.deed_state !== "executed") {
+            const docId = appRow.pandadoc_document_id;
+            const voidResult = await voidDocument(docId);
 
-          const voidResult = await voidDocument(docId);
+            if (voidResult.ok && !voidResult.signed) {
+              await service.from("applications").update({
+                deed_state: "voided",
+                pandadoc_document_id: null,
+              }).eq("id", appRow.id);
 
-          await service.from("applications").update({
-            deed_state: "voided",
-            pandadoc_document_id: null
-          }).eq("id", appRow.id);
+              await service.from("activity_log").insert({
+                application_id: appRow.id,
+                kind: "deed_voided",
+                message: "Outstanding deed signing link expired because the payment was refunded.",
+                actor: "System",
+                visibility: "business",
+              });
+            } else {
+              // Not confirmed dead (timeout, rejection, or already signed). Keep the
+              // document id ON the application: it is the only handle left for
+              // remediation, and it lets the completion webhook match the document
+              // and refuse to issue a deed. Clearing it here hides a live link.
+              const reason = voidResult.signed
+                ? "the tenant had already signed it"
+                : voidResult.error ?? "unknown error";
 
-          await service.from("activity_log").insert({
-            application_id: appRow.id,
-            kind: voidResult.ok ? "deed_voided" : "deed_error",
-            message: voidResult.ok
-              ? "Outstanding deed signing link expired because the payment was refunded."
-              : `Refund processed but PandaDoc void failed for ${docId}: ${voidResult.error ?? "unknown error"}. Manual PandaDoc review required.`,
-            actor: "System",
-            visibility: "business",
-          });
-        }
+              await service.from("activity_log").insert({
+                application_id: appRow.id,
+                kind: "deed_void_failed",
+                message: `Deed signing link could NOT be expired after refund: ${reason}. The signing link may still be live — manual remediation required.`,
+                actor: "System",
+                visibility: "internal",
+              });
+
+              try {
+                await service.rpc("report_ops_incident", {
+                  p_type: "deed_void_failed",
+                  p_detail: `App ${appRow.guarantee_ref}: PandaDoc document ${docId} could not be expired after refund (${reason}). The signing link may still be live.`,
+                });
+              } catch { /* never mask */ }
+            }
+          }
+
           // Branded refund confirmation to the tenant (redirected to the review
           // address in test mode). Idempotent: the whole charge.refunded block
           // runs once per event via the stripe_events dedup above.
