@@ -123,6 +123,23 @@ Deno.serve(async (req) => {
               });
             }
           }
+
+          else {
+          // NAYA — failure/timeout case, abhi missing hai
+          await service.from("activity_log").insert({
+            application_id: appRow.id,
+            kind: "deed_void_failed",
+            message: `Deed could not be automatically voided after refund:  "unknown error"}`,
+            actor: "System",
+            visibility: "internal",
+          });
+          try {
+            await service.rpc("report_ops_incident", {
+              p_type: "deed_void_failed",
+              p_detail: `App ${appRow.guarantee_ref}: PandaDoc document ${appRow.pandadoc_document_id} could not be voided after refund. Manual remediation required.`,
+            });
+          } catch { /* never mask */ }
+        }
           // Branded refund confirmation to the tenant (redirected to the review
           // address in test mode). Idempotent: the whole charge.refunded block
           // runs once per event via the stripe_events dedup above.
