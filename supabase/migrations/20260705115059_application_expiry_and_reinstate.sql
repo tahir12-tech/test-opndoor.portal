@@ -30,7 +30,7 @@ begin
       set status = 'expired', expired_at = now()
       where status = 'sent'
         and sent_at is not null
-        and sent_at < (p_today::timestamptz - interval '14 days')
+        and sent_at::date <= (p_today - 14)
       returning id
   ),
   logged as (
