@@ -104,17 +104,16 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     ),
     // Commission rates are commercially confidential and no longer live on the
     // rows above: authenticated has no column privilege on partners.partner_rate
-    // /agent_rate or applications.partner_rate/agent_rate. They arrive through
-    // two governed views that hand rates to opndoor admin (every partner) and to
-    // a partner's own Management (their partner only). A Referrer gets ZERO rows
-    // from both, so their rates stay null and every commission figure derived
-    // from them is withheld rather than fabricated (#79/#109: commission is
-    // never shown to a referrer). See the migrations
-    // 20260904120000_commission_rate_confidentiality.sql (the views) and
-    // 20260904120500_revoke_commission_rate_columns.sql (the cut-over, which must
-    // not be applied until this front end is deployed).
-    client.from('partner_commission_rates').select('partner_id, partner_rate, agent_rate'),
-    client.from('application_commission_rates').select('application_id, partner_rate, agent_rate'),
+    // /agent_rate or applications.partner_rate/agent_rate. They arrive through two
+    // SECURITY DEFINER readers that hand rates to opndoor admin (every partner)
+    // and to a partner's own Management (their partner only). A Referrer gets ZERO
+    // rows from both — never an error — so their rates stay null and every
+    // commission figure derived from them is withheld rather than fabricated
+    // (#79/#109: commission is never shown to a referrer). Migrations:
+    // 20260904120000 (masking + grant helper), 20260904120500 (the column
+    // cut-over), 20260904130000 (these two readers).
+    client.rpc('commission_rates_for_partners'),
+    client.rpc('commission_rates_for_applications'),
   ]);
 
   for (const res of [partnersRes, usersRes, agenciesRes, branchesRes, contactsRes, appsRes, partnerRatesRes, appRatesRes]) {

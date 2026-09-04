@@ -488,9 +488,11 @@ human clicks.
   what opndoor pays their partner), and RLS cannot hide a column — so `authenticated`
   holds a column-list grant on those two tables that excludes
   `partner_rate`/`agent_rate`, and the rates reach the client through the
-  `partner_commission_rates` / `application_commission_rates` views instead (migrations
-  `20260904120000` = views + RPC masking, `20260904120500` = the column cut-over, split
-  so the front end can deploy between them; proof C9). If you `alter table … add column` on either table, end the
+  `commission_rates_for_partners()` / `commission_rates_for_applications()` readers
+  instead (migrations `20260904120000` = RPC masking + grant helper, `20260904120500` =
+  the column cut-over, split so the front end can deploy between them, `20260904130000` =
+  the two readers, which replaced owner-rights views that tripped the Security Advisor's
+  `security_definer_view` check; proof C9). If you `alter table … add column` on either table, end the
   migration with `select public.reapply_rate_column_privileges();` or the app will not be
   able to read the new column. If a rate ever has to reach a new surface, widen the view,
   never the table grant.
