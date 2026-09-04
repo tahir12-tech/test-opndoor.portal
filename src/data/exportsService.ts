@@ -409,8 +409,9 @@ export function buildPerformanceDoc(role: Role, period: Period): BrandedExport {
         { label: 'Total guaranteed rent value', value: m.deed * ANNUAL, type: 'money' },
         { label: 'Guarantor fees collected', value: m.fees, type: 'money' },
         ...(showComm ? [
-          { label: 'Partner commission (share of one month rent)', value: m.fees * xrates.partner, type: 'money' as const },
-          { label: 'Agent commission (share of one month rent)', value: m.fees * xrates.agent, type: 'money' as const },
+          // showComm is false for referrers (#109), the only role whose rates are withheld.
+          { label: 'Partner commission (share of one month rent)', value: m.fees * (xrates.partner ?? 0), type: 'money' as const },
+          { label: 'Agent commission (share of one month rent)', value: m.fees * (xrates.agent ?? 0), type: 'money' as const },
         ] : []),
         { label: 'Average monthly rent', value: AVG_RENT, type: 'money' },
         { label: 'Average guarantor fee', value: m.paid ? m.fees / m.paid : 0, type: 'money' },
@@ -636,8 +637,11 @@ function buildRealApplicationDoc(role: Role, period: Period, basis: ExportBasis,
     // rows both read £0, not earned-looking money). Rates are the application's
     // SNAPSHOT (frozen at creation), so a past-period export stays immune to edits.
     const earned = !!a.paidAt && !a.refunded;
-    const partnerComm = earned ? a.rent * a.partnerRate : 0;
-    const agentComm = earned ? a.rent * a.agentRate : 0;
+    // A null rate is WITHHELD (a Referrer never receives commission rates), and
+    // this export is blocked for referrers anyway (#109) — so it reads as zero
+    // rather than being back-filled from the partner's live rate.
+    const partnerComm = earned ? a.rent * (a.partnerRate ?? 0) : 0;
+    const agentComm = earned ? a.rent * (a.agentRate ?? 0) : 0;
     const row: TableRow = [
       partnerName(a.partner), a.ref, a.agency, a.branch, a.referrer, STATUS[a.status], payState,
       a.sentAt ? dmy(a.sentAt) : '', a.paidAt ? dmy(a.paidAt) : '', a.deedAt ? dmy(a.deedAt) : '',

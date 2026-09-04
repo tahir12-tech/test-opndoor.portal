@@ -33,6 +33,21 @@ const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
 const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /**
+ * An application's snapshotted commission rates for the money maths.
+ *
+ * A rate of null means WITHHELD, not zero: commission rates are commercially
+ * confidential, so the database hands them only to opndoor admin and to that
+ * partner's own Management, and a Referrer's session never carries them. Every
+ * referrer-facing surface omits commission entirely (#79 League, #109 exports,
+ * and the Dashboard's commission card is Management/admin only), so a withheld
+ * rate contributes nothing here — and must NEVER be substituted with a partner
+ * default, which would invent a figure the viewer is not allowed to see.
+ */
+function ratesOf(app: FullApp): { partner: number; agent: number } {
+  return { partner: app.partnerRate ?? 0, agent: app.agentRate ?? 0 };
+}
+
+/**
  * True when live analytics should be used: Supabase mode AND the live set has
  * been hydrated. Keyed on hydration, not on row count, so a genuinely empty
  * scope renders honest zeros instead of silently reverting to the mock model.
@@ -94,7 +109,7 @@ export function liveAggregate(role: Role, scope: PartnerScope, period: Period): 
   let s2pSum = 0, s2pN = 0, p2dSum = 0, p2dN = 0;
   const now = nowRef().getTime();
   for (const app of set) {
-    const r = { partner: app.partnerRate, agent: app.agentRate };
+    const r = ratesOf(app);
     rentSum += app.rent;
     if (inRange(app.sentAt, start, end)) a.sent += 1;
     if (inRange(app.paidAt, start, end)) {
@@ -227,7 +242,7 @@ function groupRows(set: FullApp[], key: GroupKey, start: Date, end: Date): Leagu
     if (app.withdrawn || app.expired) continue;
     const k = keyOf(app, key, monthLabel);
     if (!k) continue;
-    const r = { partner: app.partnerRate, agent: app.agentRate };
+    const r = ratesOf(app);
     const sentIn = inRange(app.sentAt, start, end);
     const paidIn = inRange(app.paidAt, start, end);
     const deedIn = inRange(app.deedAt, start, end);
@@ -314,7 +329,7 @@ export function liveMonths(role: Role, scope: PartnerScope): MonthRow[] {
     if (app.sentAt && idx(app.sentAt) >= lo && idx(app.sentAt) <= hi) { const m = at(app.sentAt); if (m) m.refs += 1; }
     if (app.paidAt && idx(app.paidAt) >= lo && idx(app.paidAt) <= hi) {
       const m = at(app.paidAt);
-      if (m) { m.fees += app.rent; if (!app.refunded) m.comm += app.rent * app.partnerRate; }
+      if (m) { m.fees += app.rent; if (!app.refunded) m.comm += app.rent * ratesOf(app).partner; }
     }
     if (app.deedAt && idx(app.deedAt) >= lo && idx(app.deedAt) <= hi) { const m = at(app.deedAt); if (m) m.deeds += 1; }
   }
@@ -357,7 +372,7 @@ export function getCommissionSettlement(role: Role, scope: PartnerScope): Commis
   for (const a of set) {
     if (!inRange(a.paidAt, bStart, bEnd)) continue;
     if (a.refunded) continue; // net of refunds: a refunded application earns no commission
-    const commission = a.rent * a.partnerRate;
+    const commission = a.rent * ratesOf(a).partner;
     let ps = byPartner.get(a.partner);
     if (!ps) { ps = { partner: a.partner, partnerName: partnerName(a.partner), commission: 0, apps: [] }; byPartner.set(a.partner, ps); }
     ps.commission += commission;
@@ -391,7 +406,7 @@ export function livePartnerBreakdown(role: Role, scope: PartnerScope, period: Pe
   const map = new Map<string, PartnerCommissionRow>();
   for (const app of set) {
     if (!inRange(app.paidAt, start, end)) continue; // commission attributed to the payment period
-    const r = { partner: app.partnerRate, agent: app.agentRate };
+    const r = ratesOf(app);
     let row = map.get(app.partner);
     if (!row) {
       row = { partner: app.partner, partnerName: partnerName(app.partner), paid: 0, feesGross: 0, refundValue: 0,
@@ -442,7 +457,7 @@ export function getAgentCommissionSettlement(role: Role, scope: PartnerScope): A
   for (const a of set) {
     if (!inRange(a.paidAt, bStart, bEnd)) continue;
     if (a.refunded) continue; // net of refunds
-    const commission = a.rent * a.agentRate;
+    const commission = a.rent * ratesOf(a).agent;
     // Key by partner + agency so same-named agencies under different partners never merge.
     const key = `${a.partner}${a.agency}`;
     let ag = byAgency.get(key);

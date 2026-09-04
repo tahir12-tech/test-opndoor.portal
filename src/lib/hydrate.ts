@@ -80,8 +80,8 @@ function toContact(c: any): AgentContact {
 /** Load all RLS-scoped datasets and replace the service working copies. */
 export async function hydrateFromSupabase(userId: string): Promise<void> {
   const client = sb();
-  const [partnersRes, usersRes, agenciesRes, branchesRes, contactsRes, appsRes] = await Promise.all([
-    client.from('partners').select('id, slug, name, status, live_from, partner_rate, agent_rate, is_primary, referrer_leaderboard_mode'),
+  const [partnersRes, usersRes, agenciesRes, branchesRes, contactsRes, appsRes, partnerRatesRes, appRatesRes] = await Promise.all([
+    client.from('partners').select('id, slug, name, status, live_from, is_primary, referrer_leaderboard_mode'),
     // Admin user list via RPC: TRUTHFUL last-active (auth.users.last_sign_in_at)
     // and status/role, visibility-scoped like the users_select RLS policy.
     client.rpc('list_managed_users'),
@@ -95,16 +95,29 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
       'id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, ' +
         'tenant_dob, tenant_email, tenant_phone, ' +
         'prop_addr1, prop_addr2, prop_city, prop_county, prop_postcode, ' +
-        'monthly_rent, partner_rate, agent_rate, status, beneficiary, tenancy_start, sent_at, paid_at, deed_issued_at, expiry_date, ' +
+        'monthly_rent, status, beneficiary, tenancy_start, sent_at, paid_at, deed_issued_at, expiry_date, ' +
         'payment_state, refunded_at, refunded_amount, paid_amount, refund_after_start, ' +
         'withdrawn_at, withdrawn_reason, withdrawn_note, ' +
         'deed_state, deed_sent_at, deed_viewed_at, expiry_reminders_sent, ' +
         'referrer_id, referrer_name, branch_id, agency_id, partner_id, ' +
         'branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name, role), partner:partners(slug)',
     ),
+    // Commission rates are commercially confidential and no longer live on the
+    // rows above: authenticated has no column privilege on partners.partner_rate
+    // /agent_rate or applications.partner_rate/agent_rate. They arrive through
+    // two governed views that hand rates to opndoor admin (every partner) and to
+    // a partner's own Management (their partner only). A Referrer gets ZERO rows
+    // from both, so their rates stay null and every commission figure derived
+    // from them is withheld rather than fabricated (#79/#109: commission is
+    // never shown to a referrer). See the migrations
+    // 20260904120000_commission_rate_confidentiality.sql (the views) and
+    // 20260904120500_revoke_commission_rate_columns.sql (the cut-over, which must
+    // not be applied until this front end is deployed).
+    client.from('partner_commission_rates').select('partner_id, partner_rate, agent_rate'),
+    client.from('application_commission_rates').select('application_id, partner_rate, agent_rate'),
   ]);
 
-  for (const res of [partnersRes, usersRes, agenciesRes, branchesRes, contactsRes, appsRes]) {
+  for (const res of [partnersRes, usersRes, agenciesRes, branchesRes, contactsRes, appsRes, partnerRatesRes, appRatesRes]) {
     if (res.error) throw new Error(`Failed to load data: ${res.error.message}`);
   }
 
@@ -116,10 +129,15 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
   const apps = (appsRes.data ?? []) as any[];
 
   const partnerSlug = new Map<string, string>(partners.map((p) => [p.id, p.slug]));
-  // Fallback rates by partner (only used if a row somehow lacks its snapshot;
-  // the applications columns are NOT NULL, so this is belt-and-braces).
-  const partnerRateById = new Map<string, number>(partners.map((p) => [p.id, num(p.partner_rate)]));
-  const agentRateById = new Map<string, number>(partners.map((p) => [p.id, num(p.agent_rate)]));
+  // Rates from the governed views, keyed by partner id / application id. A key
+  // that is absent means "withheld from this viewer", which is why the maps are
+  // read with .get() (undefined -> null) and never defaulted to a rate.
+  const partnerRates = new Map<string, { partner: number; agent: number }>(
+    ((partnerRatesRes.data ?? []) as any[]).map((r) => [r.partner_id, { partner: num(r.partner_rate), agent: num(r.agent_rate) }]),
+  );
+  const appRates = new Map<string, { partner: number; agent: number }>(
+    ((appRatesRes.data ?? []) as any[]).map((r) => [r.application_id, { partner: num(r.partner_rate), agent: num(r.agent_rate) }]),
+  );
   const slugOfApp = (a: any): string => emb(a.partner)?.slug ?? partnerSlug.get(a.partner_id) ?? '';
   const fullName = (a: any): string => `${a.tenant_first_name} ${a.tenant_last_name}`;
   const ownerFlag = (a: any): number => (a.referrer_id === userId ? 1 : 0);
@@ -159,8 +177,9 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     ...(p.is_primary ? { primary: true } : {}),
     users: usersByPartner[p.slug] || 0,
     apps: appsByPartner[p.slug] || 0,
-    partnerRate: num(p.partner_rate),
-    agentRate: num(p.agent_rate),
+    // Live rates, or null when the viewer is not entitled to them (Referrer).
+    partnerRate: partnerRates.get(p.id)?.partner ?? null,
+    agentRate: partnerRates.get(p.id)?.agent ?? null,
     referrerLeaderboard: (p.referrer_leaderboard_mode ?? 'full') as Partner['referrerLeaderboard'],
   }));
 
@@ -264,8 +283,10 @@ export async function hydrateFromSupabase(userId: string): Promise<void> {
     owner: ownerFlag(a),
     status: a.status as Status,
     rent: num(a.monthly_rent),
-    partnerRate: a.partner_rate != null ? num(a.partner_rate) : (partnerRateById.get(a.partner_id) ?? 0),
-    agentRate: a.agent_rate != null ? num(a.agent_rate) : (agentRateById.get(a.partner_id) ?? 0),
+    // The application's SNAPSHOT (rate-snapshot law), or null when the viewer is
+    // not entitled to commission rates. Never the partner's live rate.
+    partnerRate: appRates.get(a.id)?.partner ?? null,
+    agentRate: appRates.get(a.id)?.agent ?? null,
     sentAt: toDate(a.sent_at),
     paidAt: toDate(a.paid_at),
     deedAt: toDate(a.deed_issued_at),

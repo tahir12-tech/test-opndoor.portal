@@ -483,6 +483,17 @@ human clicks.
   settlement, exports and commission all read `applications.partner_rate`/`agent_rate`
   (snapshotted at creation), never the partner's current rate. If you "fix" a figure by
   reading the live partner rate, you'll silently rewrite history. Don't.
+- **`partners` and `applications` carry PER-COLUMN grants, so a new column is invisible
+  until you re-grant it.** Commission rates are confidential (a Referrer must never see
+  what opndoor pays their partner), and RLS cannot hide a column — so `authenticated`
+  holds a column-list grant on those two tables that excludes
+  `partner_rate`/`agent_rate`, and the rates reach the client through the
+  `partner_commission_rates` / `application_commission_rates` views instead (migrations
+  `20260904120000` = views + RPC masking, `20260904120500` = the column cut-over, split
+  so the front end can deploy between them; proof C9). If you `alter table … add column` on either table, end the
+  migration with `select public.reapply_rate_column_privileges();` or the app will not be
+  able to read the new column. If a rate ever has to reach a new surface, widen the view,
+  never the table grant.
 - **Impersonating a user in SQL:** `set_config('request.jwt.claims',
   json_build_object('sub', <user id>, 'aal','aal2','role','authenticated')::text, true)`
   then (optionally) `set local role authenticated`. `auth.uid()`/`is_aal2()` read those

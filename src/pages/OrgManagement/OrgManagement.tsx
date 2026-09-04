@@ -752,6 +752,11 @@ export function OrgManagement() {
 
   const rates = getRatesFor(partnerScope);
   const isMgmt = role === 'management';
+  // The commission stats below render for Management only, whose session carries
+  // the partner's rates. A referrer's rates are withheld (null) by the database
+  // and no commission stat is rendered for them at all.
+  const pRate = rates.partner ?? 0;
+  const aRate = rates.agent ?? 0;
   const q = query.trim().toLowerCase();
   const pool = getAgencies(partnerScope);
 
@@ -1114,8 +1119,8 @@ function requestCloseContacts() {
                 <Link className="statlink statlink--agency" to={`/applications?agency=${encodeURIComponent(a.name)}`} title={`View all applications for ${a.name}`}>
                   <div className="agency__stat"><div className="n">{a.referrals}</div><div className="l">Referrals</div></div>
                   <div className="agency__stat"><div className="n">{fmtK(fees)}</div><div className="l">Fees collected</div></div>
-                  {isMgmt && <div className="agency__stat"><div className="n">{fmtK(fees * rates.partner)}</div><div className="l">Your commission</div></div>}
-                  {isMgmt && <div className="agency__stat"><div className="n">{fmtK(fees * rates.agent)}</div><div className="l">Agent comm.</div></div>}
+                  {isMgmt && <div className="agency__stat"><div className="n">{fmtK(fees * pRate)}</div><div className="l">Your commission</div></div>}
+                  {isMgmt && <div className="agency__stat"><div className="n">{fmtK(fees * aRate)}</div><div className="l">Agent comm.</div></div>}
                   {goIcon}
                 </Link>
                 {role === 'superadmin' && (
@@ -1139,8 +1144,8 @@ function requestCloseContacts() {
                       <Link className="statlink statlink--branch" to={`/applications?branch=${encodeURIComponent(b.name)}`} title={`View applications for ${b.name}`}>
                         <div className="branch__stat"><b>{b.referrals}</b>referrals</div>
                         <div className="branch__stat"><b>{fmtK(bFees)}</b>fees collected</div>
-                        {isMgmt && <div className="branch__stat"><b>{fmtK(bFees * rates.partner)}</b>your comm.</div>}
-                        {isMgmt && <div className="branch__stat"><b>{fmtK(bFees * rates.agent)}</b>agent comm.</div>}
+                        {isMgmt && <div className="branch__stat"><b>{fmtK(bFees * pRate)}</b>your comm.</div>}
+                        {isMgmt && <div className="branch__stat"><b>{fmtK(bFees * aRate)}</b>agent comm.</div>}
                         {goIcon}
                       </Link>
                     </div>
