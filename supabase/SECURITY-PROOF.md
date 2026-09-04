@@ -595,3 +595,14 @@ base tables' RLS, so each view carries the full gate in its own `WHERE`:
 `is_aal2()` **and** (`is_admin()` **or** management-of-that-partner). Both are
 `security_barrier`, so a caller-supplied predicate cannot be pushed below the
 gate. A Referrer selects zero rows from either. Proven in C9.
+
+The Table Editor shows both views with an **UNRESTRICTED** badge ("Data is
+publicly accessible via API as this is a Security definer"). That is the same
+finding in Studio's words: RLS policies exist only on tables, so a view can never
+carry one, and Studio prints the badge for any owner-rights view without
+inspecting what it returns. It is expected here and is **not** a sign the rates
+are reachable — `anon` has no privilege on either view (revoked, since Supabase's
+default privileges would otherwise grant it) and would in any case fail the
+`is_aal2()` gate and select nothing. The only way to clear the badge would be
+`security_invoker = on`, which breaks the design: the invoker is exactly who has
+no privilege on the rate columns.

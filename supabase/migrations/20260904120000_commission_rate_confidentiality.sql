@@ -131,6 +131,15 @@ comment on view public.application_commission_rates is
 grant select on public.partner_commission_rates     to authenticated;
 grant select on public.application_commission_rates to authenticated;
 
+-- Supabase's default privileges hand every new object in `public` to `anon` too.
+-- Take that back: only a signed-in session has any business asking for a rate.
+-- The views' own WHERE already denies anon (no `aal` claim -> is_aal2() false, so
+-- zero rows), but Studio flags an owner-rights view as "UNRESTRICTED / publicly
+-- accessible via API" — a label about the view's rights mode, not about the gate
+-- inside it — and that phrase should not be literally true for these two.
+revoke all on public.partner_commission_rates     from anon, public;
+revoke all on public.application_commission_rates from anon, public;
+
 -- ---------- 3. Rate masking on RPC return values ----------
 -- A SECURITY DEFINER function's return value is not filtered by column
 -- privileges, so an RPC handing back a whole applications row would post the
