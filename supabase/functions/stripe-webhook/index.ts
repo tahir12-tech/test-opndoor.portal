@@ -26,7 +26,7 @@ import { titleCaseAddress } from "../_shared/text.ts";
 Deno.serve(async (req) => {
   const STRIPE_SECRET = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
   const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
-  if (!STRIPE_SECRET.startsWith("sk_live_")) return new Response("Live mode only (sk_live_ required).", { status: 400 });
+  if (!STRIPE_SECRET.startsWith("sk_test_")) return new Response("Test mode only (sk_test_ required).", { status: 400 });
   if (!WEBHOOK_SECRET) return new Response("Webhook secret not configured.", { status: 400 });
 
   const stripe = new Stripe(STRIPE_SECRET, { httpClient: Stripe.createFetchHttpClient(), apiVersion: "2024-06-20" });
@@ -110,26 +110,26 @@ Deno.serve(async (req) => {
           if (appRow.refund_after_start) {
             await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
           }
-        if (appRow.pandadoc_document_id && appRow.deed_state === "awaiting_tenant") {
-                  const docId = appRow.pandadoc_document_id;
+            if (appRow.pandadoc_document_id && appRow.deed_state === "awaiting_tenant") {
+          const docId = appRow.pandadoc_document_id;
 
-                  const voidResult = await voidDocument(docId);
+          const voidResult = await voidDocument(docId);
 
-                  await service.from("applications").update({
-                    deed_state: "voided",
-                    pandadoc_document_id: null
-                  }).eq("id", appRow.id);
+          await service.from("applications").update({
+            deed_state: "voided",
+            pandadoc_document_id: null
+          }).eq("id", appRow.id);
 
-                  await service.from("activity_log").insert({
-                    application_id: appRow.id,
-                    kind: voidResult.ok ? "deed_voided" : "deed_error",
-                    message: voidResult.ok
-                      ? "Outstanding deed signing link expired because the payment was refunded."
-                      : `Refund processed but PandaDoc void failed for ${docId}: ${voidResult.error ?? "unknown error"}. Manual PandaDoc review required.`,
-                    actor: "System",
-                    visibility: "business",
-                  });
-          }
+          await service.from("activity_log").insert({
+            application_id: appRow.id,
+            kind: voidResult.ok ? "deed_voided" : "deed_error",
+            message: voidResult.ok
+              ? "Outstanding deed signing link expired because the payment was refunded."
+              : `Refund processed but PandaDoc void failed for ${docId}: ${voidResult.error ?? "unknown error"}. Manual PandaDoc review required.`,
+            actor: "System",
+            visibility: "business",
+          });
+        }
           // Branded refund confirmation to the tenant (redirected to the review
           // address in test mode). Idempotent: the whole charge.refunded block
           // runs once per event via the stripe_events dedup above.
