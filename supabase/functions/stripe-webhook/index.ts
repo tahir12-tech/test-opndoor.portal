@@ -95,52 +95,63 @@ Deno.serve(async (req) => {
           }
         }
       }
-    } else if (event.type === "charge.refunded") {
-      const c = event.data.object as Stripe.Charge;
-      const pi = typeof c.payment_intent === "string" ? c.payment_intent : c.payment_intent?.id ?? null;
-      const refundId = c.refunds?.data?.[0]?.id ?? c.id;
-      if (pi) {
-        const refundAmount = (c.amount_refunded ?? 0) / 100;
-        await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
-        const { data: appRow } = await service.from("applications")
-          .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode, pandadoc_document_id, deed_state")
-          .eq("stripe_payment_intent_id", pi).maybeSingle();
-        if (appRow) {
-          await service.from("activity_log").insert({ application_id: appRow.id, kind: "refunded", message: "Payment refunded in Stripe.", actor: "Stripe" });
-          if (appRow.refund_after_start) {
-            await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
-          }
-          if (appRow.pandadoc_document_id && appRow.deed_state === "awaiting_tenant") {
-            const voidResult = await voidDocument(appRow.pandadoc_document_id);
-            if (voidResult.ok) {
-              await service.from("applications").update({ deed_state: "voided", pandadoc_document_id: null }).eq("id", appRow.id);
-              await service.from("activity_log").insert({
-                application_id: appRow.id,
-                kind: "deed_voided",
-                message: "Outstanding deed signing link expired because the payment was refunded.",
-                actor: "System",
-                visibility: "business",
-              });
-            }
-          }
-          // Branded refund confirmation to the tenant (redirected to the review
-          // address in test mode). Idempotent: the whole charge.refunded block
-          // runs once per event via the stripe_events dedup above.
-          // Whole pounds show no decimals; a partial refund shows exactly two.
-          const amountGBP = `£${refundAmount.toLocaleString("en-GB", { minimumFractionDigits: refundAmount % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
-          await deliverRefund(service, {
-            appId: appRow.id,
-            tenantEmail: appRow.tenant_email,
-            title: appRow.tenant_title ?? "",
-            lastName: appRow.tenant_last_name ?? "",
-            // #8 Title-case the address line for display; postcode left raw.
-            propertyAddr: [titleCaseAddress(appRow.prop_addr1), appRow.prop_postcode].filter(Boolean).join(", "),
-            amount: amountGBP,
-            guaranteeRef: appRow.guarantee_ref,
+  } else if (event.type === "charge.refunded") {
+  const c = event.data.object as Stripe.Charge;
+  const pi = typeof c.payment_intent === "string" ? c.payment_intent : c.payment_intent?.id ?? null;
+  const refundId = c.refunds?.data?.[0]?.id ?? c.id;
+  if (pi) {
+    const refundAmount = (c.amount_refunded ?? 0) / 100;
+    await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
+    const { data: appRow } = await service.from("applications")
+      .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode, pandadoc_document_id, deed_state")
+      .eq("stripe_payment_intent_id", pi).maybeSingle();
+    if (appRow) {
+      await service.from("activity_log").insert({ application_id: appRow.id, kind: "refunded", message: "Payment refunded in Stripe.", actor: "Stripe" });
+      if (appRow.refund_after_start) {
+        await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
+      }
+      if (appRow.pandadoc_document_id && appRow.deed_state === "awaiting_tenant") {
+        const voidResult = await voidDocument(appRow.pandadoc_document_id);
+        if (voidResult.ok) {
+          await service.from("applications").update({ deed_state: "voided", pandadoc_document_id: null }).eq("id", appRow.id);
+          await service.from("activity_log").insert({
+            application_id: appRow.id,
+            kind: "deed_voided",
+            message: "Outstanding deed signing link expired because the payment was refunded.",
+            actor: "System",
+            visibility: "business",
           });
+        } else {
+          await service.from("activity_log").insert({
+            application_id: appRow.id,
+            kind: "deed_void_failed",
+            message: `Deed could not be automatically voided after refund: ${voidResult.error ?? "unknown error"}`,
+            actor: "System",
+            visibility: "internal",
+          });
+          try {
+            await service.rpc("report_ops_incident", {
+              p_type: "deed_void_failed",
+              p_detail: `App ${appRow.guarantee_ref}: PandaDoc document ${appRow.pandadoc_document_id} could not be voided after refund. Manual remediation required.`,
+            });
+          } catch { /* never mask */ }
         }
       }
+      // Branded refund confirmation to the tenant. Runs regardless of the
+      // void outcome above — idempotent via the stripe_events dedup.
+      const amountGBP = `£${refundAmount.toLocaleString("en-GB", { minimumFractionDigits: refundAmount % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
+      await deliverRefund(service, {
+        appId: appRow.id,
+        tenantEmail: appRow.tenant_email,
+        title: appRow.tenant_title ?? "",
+        lastName: appRow.tenant_last_name ?? "",
+        propertyAddr: [titleCaseAddress(appRow.prop_addr1), appRow.prop_postcode].filter(Boolean).join(", "),
+        amount: amountGBP,
+        guaranteeRef: appRow.guarantee_ref,
+      });
     }
+  }
+}
     // payment_intent.payment_failed / checkout.session.expired: acknowledged, no status change.
     return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
   } catch (e) {
