@@ -244,7 +244,7 @@ export function Dashboard() {
       await exportBordereauFile(role, +mv[0], +mv[1] - 1, rate);
       setBdxOpen(false);
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not save the insurance rate.');
+      toast(e instanceof Error ? e.message : 'Could not save the insurance rate.','error');
     } finally {
       setBdxBusy(false);
     }

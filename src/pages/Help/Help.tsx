@@ -162,7 +162,7 @@ export function Help() {
     } else if (r.file) {
       const u = fileToBlobUrl(r.file);
       if (!u) {
-        toast('Could not open this file.');
+        toast('Could not open this file.','error');
         return;
       }
       a.href = u;

@@ -115,7 +115,7 @@ export function Activity() {
       forceRefresh((n) => n + 1);
       toast(`Expiry reminders (test) for ${r.date}: ${r.fired ?? 0} fired${r.emailed ? `, ${r.emailed} emailed` : ''}${r.emailFailed ? `, ${r.emailFailed} email(s) failed - see admin activity log` : ''}.`);
     } else {
-      toast(r.error || 'Could not run the expiry reminders.');
+      toast(r.error || 'Could not run the expiry reminders.','error');
     }
     setRunning(false);
   }

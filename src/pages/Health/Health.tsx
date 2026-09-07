@@ -77,7 +77,7 @@ export function Health() {
       setData(await getCronHealth());
       setRefreshedAt(new Date());
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not load the health metrics.');
+      toast(e instanceof Error ? e.message : 'Could not load the health metrics.','error');
     } finally {
       setLoading(false);
     }

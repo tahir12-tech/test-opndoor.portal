@@ -431,7 +431,7 @@ export function ApplicationDetail() {
  async function saveAmend(confirmReissue = false) {
     const parsedDate = parseInput(amendInput);
     if (!parsedDate || parsedDate.getTime() === currentStart.getTime() || !isTenancyStartInAllowedRange(parsedDate)) {
-      toast('Enter a valid tenancy start date within 7 days in the past and 2 years in the future.');
+      toast('Enter a valid tenancy start date within 7 days in the past and 2 years in the future.','warning');
       return;
     }
     // #82 On a signed deed, require the explicit consequence confirmation first.
@@ -442,7 +442,7 @@ export function ApplicationDetail() {
     } catch (err) {
       // Defence in depth: if the server still asks for confirmation, prompt for it.
       if (err && typeof err === 'object' && (err as { needsConfirm?: boolean }).needsConfirm) { setConfirmReissueOpen(true); return; }
-      toast(err instanceof Error ? err.message : 'Could not amend the tenancy start date.');
+      toast(err instanceof Error ? err.message : 'Could not amend the tenancy start date.','error');
       return;
     }
     setConfirmReissueOpen(false);
@@ -470,8 +470,8 @@ export function ApplicationDetail() {
     setAmendOpen(false);
     // The Edge Function's summary reflects what actually happened to the deed
     // (voided+regenerated, or archived+replaced); prefer it in live mode.
-    if (serverMsg) toast(serverMsg);
-    else toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsedDate)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsedDate)}.`);
+    if (serverMsg) toast(serverMsg,'error');
+    else toast(result.reissued ? `Tenancy start updated to ${fmtLong(parsedDate)}. New deed of guarantee issued.` : `Tenancy start updated to ${fmtLong(parsedDate)}.`,'success');
     void loadPayment();
   }
 
@@ -568,7 +568,7 @@ export function ApplicationDetail() {
       if (isReferrer) await sendDeedToAgent(d.ref);
       else await sendDeedToAgent(d.ref, c.email, sendSel === 'other' ? soSave : false);
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not send the deed.');
+      toast(err instanceof Error ? err.message : 'Could not send the deed.','error');
       return;
     } finally {
       setSendBusy(false);
