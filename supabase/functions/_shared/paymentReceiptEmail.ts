@@ -89,7 +89,7 @@ export async function deliverPaymentReceipt(service: any, p: { appId: string; te
   if (res.ok && res.to && res.to !== p.tenantEmail) {
     await service.from("activity_log").insert({
       application_id: p.appId, kind: "payment_receipt_sent",
-      message: `Redirected to ${res.to} (test mode).`, actor: "System", visibility: "internal",
+      message: `Payment receipt delivered to ${res.to}.`, actor: "System", visibility: "internal",
     });
   }
 }

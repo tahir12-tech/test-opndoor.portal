@@ -193,7 +193,7 @@ export async function deliverDeedToAgent(service: any, target: DeedTarget, recip
     await service.from("activity_log").insert({
       application_id: target.appId,
       kind: "deed_delivered",
-      message: `Redirected to ${res.to} (test mode).`,
+      message: `Deed email delivered to ${res.to}.`,
       actor: "System",
       visibility: "internal",
     });

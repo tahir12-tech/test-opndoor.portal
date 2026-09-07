@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
       await service.from("activity_log").insert({
         application_id: appId,
         kind: "payment_email_sent",
-        message: `Redirected to ${emailRes.to} (test mode).`,
+        message: `Payment email delivered to ${emailRes.to}.`,
         actor: "System",
         visibility: "internal",
       });

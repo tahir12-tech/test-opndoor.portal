@@ -132,7 +132,7 @@ export async function deliverExecutedDeedToTenant(service: any, p: { appId: stri
   if (res.ok && res.to && res.to !== p.tenantEmail) {
     await service.from("activity_log").insert({
       application_id: p.appId, kind: "tenant_deed_email_sent",
-      message: `Redirected to ${res.to} (test mode).`, actor: "System", visibility: "internal",
+      message: `Signed deed email delivered to ${res.to}.`, actor: "System", visibility: "internal",
     });
   }
 }

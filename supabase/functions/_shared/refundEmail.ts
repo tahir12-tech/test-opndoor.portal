@@ -87,7 +87,7 @@ export async function deliverRefund(service: any, p: { appId: string; tenantEmai
   if (res.ok && res.to && res.to !== p.tenantEmail) {
     await service.from("activity_log").insert({
       application_id: p.appId, kind: "refund_email_sent",
-      message: `Redirected to ${res.to} (test mode).`, actor: "System", visibility: "internal",
+      message: `Refund confirmation email delivered to ${res.to}.`, actor: "System", visibility: "internal",
     });
   }
 }
