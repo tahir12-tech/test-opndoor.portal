@@ -1,40 +1,77 @@
 /* Shared toast (the identical .toast block used across five screens). */
+/* =====================================================================
+   Global Toast Notifications
+   ===================================================================== */
+
 .toast-wrap {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 200;
+  z-index: 9999;
+
   display: flex;
   flex-direction: column;
   gap: 10px;
   align-items: center;
+
+  pointer-events: none;
 }
+
 .toast {
   display: flex;
   align-items: center;
   gap: 11px;
-  background: var(--valhalla);
+
   color: #fff;
   padding: 13px 18px;
   border-radius: 999px;
+
   box-shadow: var(--shadow-lg);
   font-size: 13.5px;
   font-weight: 600;
   max-width: 480px;
+
   opacity: 0;
   transform: translateY(12px);
-  transition: opacity 0.25s, transform 0.25s;
+
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
+
 .toast.is-in {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Success */
+.toast-success {
+  background: #16a34a;
+}
+
+/* Error */
+.toast-error {
+  background: #dc2626;
+}
+
+/* Warning */
+.toast-warning {
+  background: #d97706;
+}
+
+/* Info */
+.toast-info {
+  background: #2563eb;
+}
+
 .toast svg {
   width: 17px;
   height: 17px;
+
   color: #fff;
-  background: var(--deed);
+  background: rgba(255, 255, 255, 0.2);
+
   border-radius: 50%;
   padding: 3px;
   flex-shrink: 0;
