@@ -3,17 +3,13 @@
 //
 // Single server entry point for amending the tenancy start date. Permission is
 // enforced by the amend_tenancy_start RPC (deed-state aware, AAL2, ownership),
-// called as the signed-in user. After the date update, the deed lifecycle is
-// orchestrated with the service role, keyed on the deed state at amend time:
-//   - awaiting_tenant : void the outstanding document and regenerate, so the
-//                       corrected tenancy start prints on a fresh deed;
-//   - executed        : archive the signed PDF, reopen to Paid, and issue a
-//                       replacement deed for signing (Management/admin only, per
-//                       the RPC's permission check);
-//   - otherwise (Sent, or Paid with no live deed): the date update alone.
+// called as the signed-in user. After the date update, the deed lifecycle and its
+// activity trail are the shared reissueDeedForAmendment helper, run with the
+// service role, so this staff path and the agent self-serve path
+// (tenancy-correction) cannot drift apart.
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { voidDocument, generateDeed } from "../_shared/pandadoc.ts";
+import { isExecutedDeed, reissueDeedForAmendment } from "../_shared/deedReissue.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -66,7 +62,7 @@ Deno.serve(async (req) => {
     // #82 Amending a SIGNED (executed) deed is destructive: it voids/supersedes the
     // signed deed, reissues it to the tenant, and re-notifies the agent once
     // re-signed. Require an explicit confirmation BEFORE the date is committed.
-    if ((app.deed_state === "executed" || app.status === "deed") && confirmReissue !== true) {
+    if (isExecutedDeed(app) && confirmReissue !== true) {
       return json({ ok: false, needsConfirm: true, error: "Amending the tenancy start on a signed deed will void it, reissue a corrected deed to the tenant to sign, and re-notify the agent once re-signed. Confirm to proceed." }, 200);
     }
 
@@ -84,79 +80,11 @@ Deno.serve(async (req) => {
       .update({ resolved_at: new Date().toISOString(), resolved_by: userData.user?.id ?? null })
       .eq("application_id", app.id).is("resolved_at", null).not("submitted_at", "is", null);
 
-    // Exactly one BUSINESS activity entry per amend, attributed by name, stating
-    // old -> new. "The deed was reissued for signing" is appended ONLY when a
-    // regeneration actually ran. Supporting steps (archive / void) are separate:
-    // the archive entry references the amend; the void is an internal detail.
-    const logAmend = (suffix: string) =>
-      service.from("activity_log").insert({
-        application_id: app.id, kind: "tenancy_amended",
-        message: `Tenancy start amended ${dateChange} by ${actor}.${suffix}`,
-        actor, visibility: "business",
-      });
-
-    // 2) Deed lifecycle, keyed on the state at amend time.
-    if (app.deed_state === "executed" || app.status === "deed") {
-      // Archive the signed PDF before replacing it (the entry references the amend).
-      // Only claim an archive when there actually was a stored PDF to archive.
-      const archived = !!app.executed_pdf_path;
-      if (archived) {
-        const archivePath = `${app.id}/archive/${app.guarantee_ref}-superseded-${app.pandadoc_document_id ?? "deed"}.pdf`;
-        await service.storage.from("deeds").copy(app.executed_pdf_path, archivePath);
-        await service.from("activity_log").insert({ application_id: app.id, kind: "deed_archived", message: `Signed deed archived before amending the tenancy start ${dateChange}, by ${actor}.`, actor, visibility: "business" });
-      }
-      const archivePhrase = archived ? "The signed deed was archived and a" : "A";
-      // Reopen to Paid and clear the executed deed, then issue a replacement.
-      await service.from("applications").update({
-        status: "paid", deed_state: null, deed_issued_at: null, deed_executed_at: null,
-        issue_date: null, executed_pdf_path: null, pandadoc_document_id: null, deed_viewed_at: null,
-      }).eq("id", app.id);
-      const gen = await generateDeed(service, app.id, true);
-      if (!gen.ok) {
-        // The date change already committed: always leave exactly one amend entry,
-        // without a reissue clause (no regeneration ran).
-        await logAmend(`${archived ? " The signed deed was archived." : ""} The replacement deed could not be issued automatically; opndoor has been notified.`);
-        return json({ ok: false, error: `Tenancy start amended${archived ? " and the signed deed archived" : ""}, but the replacement failed: ${gen.error}` }, 200);
-      }
-      await logAmend(` ${archivePhrase} replacement was reissued for signing.`);
-      return json({ ok: true, message: `Tenancy start amended.${archived ? " The signed deed was archived and a replacement" : " A replacement deed was"} sent to the tenant to sign.` });
-    }
-
-    if (app.deed_state === "awaiting_tenant" && app.pandadoc_document_id) {
-      // #82 one-live-deed invariant: the outstanding unsigned deed must ALWAYS be
-      // replaced with a corrected one so the deed and the amended date can never
-      // disagree. The void of the old PandaDoc envelope is BEST-EFFORT: clear the
-      // document id first (so any late webhook for the old document is inert), then
-      // attempt the void, then regenerate regardless of the void outcome. A failed
-      // void never blocks the amend, because the new deed supersedes the old one.
-      const oldDocId = app.pandadoc_document_id;
-      await service.from("applications").update({ pandadoc_document_id: null, deed_state: null, deed_viewed_at: null }).eq("id", app.id);
-      const voided = await voidDocument(oldDocId);
-      await service.from("activity_log").insert({
-        application_id: app.id, kind: "deed_voided",
-        message: voided.ok
-          ? `Outstanding deed voided for a tenancy-start amendment ${dateChange} by ${actor}.`
-          : `Outstanding deed could not be voided for a tenancy-start amendment ${dateChange}; it is superseded by the regenerated deed. Detail: ${voided.error}`,
-        actor, visibility: "internal",
-      });
-      const gen = await generateDeed(service, app.id, true);
-      if (!gen.ok) {
-        // Date change committed; the deed is left in 'error' (not live) so the
-        // invariant still holds. Log the amend without a reissue clause.
-        await logAmend(" The corrected deed could not be issued automatically; opndoor has been notified.");
-        return json({ ok: false, error: `Tenancy start amended, but the corrected deed failed: ${gen.error}` }, 200);
-      }
-      // Audit line the ruling requires, kept as an INTERNAL supporting step so the
-      // single business tenancy_amended entry (below) is the only partner-visible
-      // row, matching the executed branch and the one-business-entry-per-amend rule.
-      await service.from("activity_log").insert({ application_id: app.id, kind: "deed_regenerated", message: "Deed regenerated after tenancy amendment.", actor, visibility: "internal" });
-      await logAmend(" The outstanding deed was replaced with a corrected one for signing.");
-      return json({ ok: true, message: "Tenancy start amended. The outstanding deed was replaced with a corrected one." });
-    }
-
-    // Sent, or Paid with no live deed (error / declined / voided / none): no reissue.
-    await logAmend("");
-    return json({ ok: true, message: "Tenancy start amended." });
+    // 2) Deed lifecycle + the single business amend entry, shared with the agent
+    // self-serve path (tenancy-correction) so the two can never drift apart.
+    const out = await reissueDeedForAmendment(service, app, actor, dateChange);
+    if (!out.ok) return json({ ok: false, error: out.error }, 200);
+    return json({ ok: true, message: out.message });
   } catch (e) {
     return json({ ok: false, error: "Could not amend the tenancy start date." }, 500);
   }
