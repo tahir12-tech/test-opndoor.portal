@@ -377,7 +377,6 @@ async function pandadocFetch(url: string, init: RequestInit, tries = 3): Promise
       if (i < tries - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
     }
   }
-  if (last) console.error(`PandaDoc request gave up on ${url}: ${last instanceof Error ? last.message : String(last)}`);
   return null;
 }
 

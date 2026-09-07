@@ -33,7 +33,9 @@ Deno.serve(async (req) => {
       .select("id, executed_pdf_path")
       .eq("guarantee_ref", ref)
       .maybeSingle();
-    if (error) return json({ ok: false, error: error.message }, 400);
+    if (error) {
+      return json({ ok: false, error: "Could not open the deed download." }, 400);
+    }
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
     if (!app.executed_pdf_path) return json({ ok: false, error: "The deed has not been issued yet." }, 400);
 
@@ -42,6 +44,6 @@ Deno.serve(async (req) => {
     if (sErr || !signed) return json({ ok: false, error: "Could not generate the download link." }, 500);
     return json({ ok: true, url: signed.signedUrl });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not open the deed download." }, 500);
   }
 });

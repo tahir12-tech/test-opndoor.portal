@@ -88,7 +88,9 @@ Deno.serve(async (req) => {
 
     // Fire due reminders (idempotent). Returns only the NEW ones to email.
     const { data: fired, error: rpcErr } = await service.rpc("fire_payment_reminders", { p_today: pToday });
-    if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);
+    if (rpcErr) {
+      return json({ ok: false, error: "Could not run payment reminders." }, 500);
+    }
     const due = (fired ?? []) as Array<{
       application_id: string; guarantee_ref: string; days: number;
       tenant_title: string | null; tenant_last_name: string | null; tenant_email: string | null;
@@ -134,6 +136,6 @@ Deno.serve(async (req) => {
       const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       await svc.rpc("report_ops_incident", { p_type: "cron_error:payment-reminders", p_detail: `payment-reminders: ${msg}` });
     } catch { /* never mask the original failure */ }
-    return json({ ok: false, error: msg }, 500);
+    return json({ ok: false, error: "Payment reminders could not be completed." }, 500);
   }
 });

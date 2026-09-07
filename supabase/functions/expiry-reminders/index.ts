@@ -106,7 +106,9 @@ Deno.serve(async (req) => {
 
     // Fire due reminders (idempotent). Returns only the NEW ones to email.
     const { data: fired, error: rpcErr } = await service.rpc("fire_expiry_reminders", { p_today: pToday });
-    if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);
+    if (rpcErr) {
+      return json({ ok: false, error: "Could not run expiry reminders." }, 500);
+    }
     const newReminders = (fired ?? []) as Array<{
       application_id: string; guarantee_ref: string; days: number; expiry_date: string;
       agency: string | null; branch: string | null; referrer_email: string | null; partner_id: string; prop: string | null;
@@ -160,6 +162,6 @@ Deno.serve(async (req) => {
       const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       await svc.rpc("report_ops_incident", { p_type: "cron_error:expiry-reminders", p_detail: `expiry-reminders: ${msg}` });
     } catch { /* never mask the original failure */ }
-    return json({ ok: false, error: msg }, 500);
+    return json({ ok: false, error: "Expiry reminders could not be completed." }, 500);
   }
 });

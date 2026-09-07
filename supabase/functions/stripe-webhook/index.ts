@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
   try {
     event = await stripe.webhooks.constructEventAsync(body, sig!, WEBHOOK_SECRET, undefined, Stripe.createSubtleCryptoProvider());
   } catch (e) {
-    return new Response(`Signature verification failed: ${e instanceof Error ? e.message : String(e)}`, { status: 400 });
+    return new Response("Signature verification failed.", { status: 400 });
   }
 
   const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
   const { error: insErr } = await service.from("stripe_events").insert({ id: event.id, type: event.type });
   if (insErr) {
     if (insErr.code === "23505") return new Response(JSON.stringify({ received: true, duplicate: true }), { status: 200, headers: { "Content-Type": "application/json" } });
-    return new Response(`Could not record event: ${insErr.message}`, { status: 500 }); // let Stripe retry
+    return new Response("Could not record event.", { status: 500 }); // let Stripe retry
   }
 
   try {
@@ -188,6 +188,6 @@ Deno.serve(async (req) => {
     const msg = e instanceof Error ? e.message : String(e);
     // #3 A webhook processing failure alerts ops (deduped to one per hour).
     try { await service.rpc("report_ops_incident", { p_type: "webhook_error", p_detail: `stripe-webhook ${event?.type ?? "?"}: ${msg}` }); } catch { /* never mask the original failure */ }
-    return new Response(`Handler error: ${msg}`, { status: 500 });
+    return new Response("Webhook processing failed.", { status: 500 });
   }
 });

@@ -120,7 +120,9 @@ Deno.serve(async (req) => {
     const { data: apps, error: appErr } = await service.from("applications")
       .select("id, guarantee_ref, tenancy_start, expiry_date, monthly_rent, payment_state, partner_id, tenant_first_name, tenant_last_name, prop_addr1, prop_addr2, prop_city, prop_postcode, branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name)")
       .eq("status", "deed").gte("expiry_date", monthStart).lte("expiry_date", monthEnd);
-    if (appErr) return json({ ok: false, error: appErr.message }, 500);
+    if (appErr) {
+      return json({ ok: false, error: "Could not prepare the expiry cohort." }, 500);
+    }
 
     // Management recipients per partner.
     const { data: mgmt } = await service.from("users").select("email, partner_id").eq("role", "management");
@@ -209,6 +211,6 @@ Deno.serve(async (req) => {
       const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       await svc.rpc("report_ops_incident", { p_type: "cron_error:expiry-cohorts", p_detail: `expiry-cohorts: ${msg}` });
     } catch { /* never mask the original failure */ }
-    return json({ ok: false, error: msg }, 500);
+    return json({ ok: false, error: "The expiry cohort could not be completed." }, 500);
   }
 });

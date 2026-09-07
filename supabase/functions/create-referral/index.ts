@@ -65,7 +65,9 @@ Deno.serve(async (req) => {
       .from("branches").select("id, partner_id, agencies!inner(name)").eq("name", b.branch).eq("agencies.name", b.agency);
     if (partnerId) branchQuery = branchQuery.eq("partner_id", partnerId);
     const { data: branch, error: brErr } = await branchQuery.limit(1).maybeSingle();
-    if (brErr) return json({ ok: false, error: brErr.message }, 400);
+    if (brErr) {
+      return json({ ok: false, error: "Could not find the selected branch." }, 400);
+    }
 
     // Resolve the target branch; if it does not exist yet, create the agency/branch
     // on the fly and capture the agency-default contact. A partner user's records
@@ -83,7 +85,9 @@ Deno.serve(async (req) => {
         p_branch_email: b.branchContactEmail ?? null,
         p_partner_slug: b.partner ?? null,
       });
-      if (tErr) return json({ ok: false, error: tErr.message }, 400);
+      if (tErr) {
+        return json({ ok: false, error: "Could not save the agency and branch details." }, 400);
+      }
       branchId = targetId as string;
     }
 
@@ -92,7 +96,9 @@ Deno.serve(async (req) => {
       p_email: b.email, p_phone: b.phone, p_addr1: b.addr1, p_addr2: b.addr2 ?? null, p_city: b.city,
       p_county: b.county ?? null, p_postcode: b.postcode, p_rent: b.rent, p_tenancy_start: b.tenancyStart,
     });
-    if (rpcErr) return json({ ok: false, error: rpcErr.message }, 400);
+    if (rpcErr) {
+      return json({ ok: false, error: "Could not create the referral. Please check the details and try again." }, 400);
+    }
     const app = Array.isArray(appRes) ? appRes[0] : appRes;
 
     const appId = app.id as string;
@@ -160,8 +166,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ ok: true, ref, paymentUrl: session.url, emailSent: emailRes.ok, emailError: emailRes.ok ? null : emailRes.error });
+    return json({
+      ok: true,
+      ref,
+      paymentUrl: session.url,
+      emailSent: emailRes.ok,
+      emailError: emailRes.ok ? null : "The payment email could not be sent.",
+    });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error creating the referral." }, 500);
+    return json({ ok: false, error: "Could not create the referral. Please try again." }, 500);
   }
 });

@@ -164,6 +164,6 @@ Deno.serve(async (req) => {
     }
     return json({ ok: true, sent_to: OPS_ADDRESS, type, ref });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "The operational alert could not be sent." }, 500);
   }
 });

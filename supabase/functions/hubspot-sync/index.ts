@@ -142,7 +142,9 @@ Deno.serve(async (req) => {
     const { data: events, error: evErr } = await service.rpc("hubspot_pending_events", {
       p_last_at: cur.last_at, p_last_id: cur.last_id, p_kinds: Object.keys(KIND_TO_EVENT), p_limit: LIMIT,
     });
-    if (evErr) return json({ ok: false, error: `fetch events: ${evErr.message}` }, 500);
+    if (evErr) {
+      return json({ ok: false, error: "Could not load sync events." }, 500);
+    }
 
     const summary: any = { ok: true, env: env.env, processed: 0, by: {}, warnings: [], errors: [], cursor_start: { at: cur.last_at, id: cur.last_id } };
 
@@ -359,6 +361,6 @@ Deno.serve(async (req) => {
     summary.ms = Date.now() - started;
     return json(summary, summary.ok ? 200 : 207);
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "HubSpot sync could not be completed." }, 500);
   }
 });

@@ -46,7 +46,9 @@ Deno.serve(async (req) => {
       .from("applications")
       .select("id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, tenant_email, prop_addr1, prop_postcode, monthly_rent, status, payment_url")
       .eq("guarantee_ref", ref).maybeSingle();
-    if (error) return json({ ok: false, error: error.message }, 400);
+    if (error) {
+      return json({ ok: false, error: "Could not find the application." }, 400);
+    }
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
     if (app.status !== "sent") return json({ ok: false, error: "This application has already been paid; there is nothing to resend." }, 400);
     if (!app.payment_url) return json({ ok: false, error: "No payment link exists for this application yet." }, 400);
@@ -95,6 +97,6 @@ Deno.serve(async (req) => {
     if (!emailRes.ok) return json({ ok: false, error: emailRes.error }, 200);
     return json({ ok: true, to: emailRes.to });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not resend the payment email." }, 500);
   }
 });

@@ -122,6 +122,6 @@ Deno.serve(async (req) => {
       ...(paid ? {} : { payUrl: app.payment_url ?? null }),
     });
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ error: "The payment confirmation could not be completed." }, 500);
   }
 });

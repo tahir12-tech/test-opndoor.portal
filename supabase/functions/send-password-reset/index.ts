@@ -67,6 +67,6 @@ console.log("EMAIL RESULT", result);
     }
     return json({ ok: true });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not send the password reset email." }, 500);
   }
 });

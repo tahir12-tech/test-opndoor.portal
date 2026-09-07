@@ -90,13 +90,17 @@ Deno.serve(async (req) => {
       const { data, error } = await service.auth.admin.generateLink({
         type: "recovery", email, options: { redirectTo: `${base}/accept-invite` },
       });
-      if (error) return json({ ok: false, error: error.message }, 400);
+      if (error) {
+        return json({ ok: false, error: "Could not load the user details." }, 400);
+      }
       link = data?.properties?.action_link;
     } else {
       const { data, error } = await service.auth.admin.generateLink({
         type: "invite", email, options: { redirectTo: `${base}/accept-invite`, data: { full_name: fullName } },
       });
-      if (error) return json({ ok: false, error: error.message }, 400);
+      if (error) {
+        return json({ ok: false, error: "Could not update the invitation." }, 400);
+      }
       link = data?.properties?.action_link;
       targetUserId = data?.user?.id;
       if (targetUserId) {
@@ -136,6 +140,6 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, emailSent: emailRes.ok, emailError: emailRes.ok ? null : emailRes.error });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not send the invitation." }, 500);
   }
 });

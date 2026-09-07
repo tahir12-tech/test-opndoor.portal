@@ -37,7 +37,9 @@ Deno.serve(async (req) => {
       .from("applications")
       .select("id, guarantee_ref, tenant_title, tenant_first_name, tenant_last_name, prop_addr1, prop_postcode, tenancy_start, executed_pdf_path, agency:agencies(name)")
       .eq("guarantee_ref", ref).maybeSingle();
-    if (appErr) return json({ ok: false, error: appErr.message }, 400);
+    if (appErr) {
+      return json({ ok: false, error: "Could not find the application." }, 400);
+    }
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
 
     // Auth + role rules + claim-contact resolution, all enforced server-side.
@@ -46,7 +48,9 @@ Deno.serve(async (req) => {
       p_recipient_email: recipientEmail ?? null,
       p_save_contact: saveContact ?? false,
     });
-    if (rpcErr) return json({ ok: false, error: rpcErr.message }, 400);
+    if (rpcErr) {
+      return json({ ok: false, error: "Could not send the deed to the agent." }, 400);
+    }
     const sentTo = resolved?.sent_to as string | undefined;
     if (!sentTo) {
       // No resolved contact: record a delivery-failed activity so the record
@@ -84,6 +88,6 @@ Deno.serve(async (req) => {
 
     return json({ ok: out.ok, sentTo, emailError: out.ok ? null : out.error });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not send the deed to the agent." }, 500);
   }
 });

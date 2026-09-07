@@ -72,7 +72,9 @@ Deno.serve(async (req) => {
 
     // 1) Permission + date update, enforced in the database (deed-state aware).
     const { error: rpcErr } = await userClient.rpc("amend_tenancy_start", { p_app: app.id, p_new_start: newStart });
-    if (rpcErr) return json({ ok: false, error: rpcErr.message }, 200);
+    if (rpcErr) {
+      return json({ ok: false, error: "Could not amend the tenancy start date." }, 200);
+    }
 
     const service = createClient(SUPABASE_URL, SERVICE);
 
@@ -156,6 +158,6 @@ Deno.serve(async (req) => {
     await logAmend("");
     return json({ ok: true, message: "Tenancy start amended." });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not amend the tenancy start date." }, 500);
   }
 });

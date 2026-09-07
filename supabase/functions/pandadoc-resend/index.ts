@@ -42,7 +42,9 @@ Deno.serve(async (req) => {
       .select("id, status, payment_state, deed_state, pandadoc_document_id, guarantee_ref, tenant_first_name, tenant_last_name,tenant_email")
       .eq("guarantee_ref", ref)
       .maybeSingle();
-    if (error) return json({ ok: false, error: error.message }, 400);
+    if (error) {
+      return json({ ok: false, error: "Could not find the application." }, 400);
+    }
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
     if (app.status !== "paid" || app.payment_state === "refunded") return json({ ok: false, error: "The deed can only be (re)sent while the application is Paid and awaiting execution." }, 400);
 
@@ -75,6 +77,6 @@ Deno.serve(async (req) => {
     if (!gen.ok) return json({ ok: false, error: gen.error }, 200);
     return json({ ok: true, message: "Fresh deed sent to the tenant to sign." });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not resend the deed." }, 500);
   }
 });

@@ -53,7 +53,9 @@ Deno.serve(async (req) => {
       .select("id, status, payment_state, deed_state, pandadoc_document_id")
       .eq("guarantee_ref", ref)
       .maybeSingle();
-    if (error) return json({ ok: false, error: error.message }, 400);
+    if (error) {
+      return json({ ok: false, error: "Could not find the application." }, 400);
+    }
     if (!app) return json({ ok: false, error: "Application not found, or you do not have access to it." }, 404);
     if (app.status !== "paid" || app.payment_state === "refunded") return json({ ok: false, error: "A deed can only be voided and regenerated while the application is Paid and awaiting execution." }, 400);
 
@@ -85,6 +87,6 @@ Deno.serve(async (req) => {
     });
     return json({ ok: true, message: "Old deed voided and a fresh deed sent to the tenant to sign." });
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not replace the deed." }, 500);
   }
 });

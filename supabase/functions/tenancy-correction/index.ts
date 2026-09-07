@@ -70,6 +70,6 @@ Deno.serve(async (req) => {
 
     return json({ ok: false, error: "Unknown action." }, 400);
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
+    return json({ ok: false, error: "Could not submit the tenancy correction." }, 500);
   }
 });

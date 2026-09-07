@@ -168,7 +168,9 @@ Deno.serve(async (req) => {
     const rangeLabel = `${dmy(shiftDate(weekStart, -7))} to ${dmy(shiftDate(weekStart, -1))}`;
 
     const { data: rows, error: rpcErr } = await service.rpc("partner_weekly_digest", { p_start: startIso, p_end: endIso });
-    if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);
+    if (rpcErr) {
+      return json({ ok: false, error: "Could not prepare the weekly digest." }, 500);
+    }
     const digest = (rows ?? []) as DigestRow[];
 
     // #5 Climber of the week: the referrer whose fees-rank rose most vs the prior
@@ -234,6 +236,6 @@ Deno.serve(async (req) => {
       const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       await svc.rpc("report_ops_incident", { p_type: "cron_error:weekly-digest", p_detail: `weekly-digest: ${msg}` });
     } catch { /* never mask the original failure */ }
-    return json({ ok: false, error: msg }, 500);
+    return json({ ok: false, error: "The weekly digest could not be completed." }, 500);
   }
 });
