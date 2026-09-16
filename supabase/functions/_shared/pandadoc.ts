@@ -430,12 +430,39 @@ export async function downloadPdf(documentId: string): Promise<Uint8Array | null
 }
 
 /** PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key. */
-export async function verifyWebhook(rawBody: string, signature: string): Promise<boolean> {
-  if (!WEBHOOK_KEY || !signature) return false;
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(WEBHOOK_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  const hex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return hex === signature.toLowerCase();
+export async function verifyWebhook(
+  rawBody: string,
+  signature: string
+): Promise<boolean> {
+  if (!WEBHOOK_KEY || !signature) {
+    console.log("WEBHOOK KEY OR SIGNATURE MISSING");
+    return false;
+  }
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(WEBHOOK_KEY),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(rawBody)
+  );
+
+  const expected = [...new Uint8Array(mac)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  console.log("Received signature length:", signature.length);
+  console.log("Expected signature length:", expected.length);
+  console.log("Signature format valid:", /^[a-f0-9]+$/i.test(signature));
+  console.log("Signature match:", expected.toLowerCase() === signature.toLowerCase());
+
+  return expected.toLowerCase() === signature.toLowerCase();
 }
 
 /**
