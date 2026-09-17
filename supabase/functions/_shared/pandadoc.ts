@@ -447,14 +447,93 @@ export async function voidDocument(documentId: string): Promise<{ ok: boolean; a
 
 
 /** Download the executed PDF (available once the document is completed). */
+/** Download the executed PDF (available once the document is completed). */
 export async function downloadPdf(documentId: string): Promise<Uint8Array | null> {
-  try {
-    const res = await fetch(`${API}/documents/${documentId}/download`, { headers: { Authorization: `API-Key ${KEY}` } });
-    if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer());
-  } catch {
-    return null;
+  const maxAttempts = 5;
+  const delayMs = 3000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(
+        `PANDADOC PDF DOWNLOAD ATTEMPT ${attempt}/${maxAttempts}:`,
+        documentId
+      );
+
+      const res = await fetch(
+        `${API}/documents/${documentId}/download`,
+        {
+          headers: {
+            Authorization: `API-Key ${KEY}`,
+          },
+        }
+      );
+
+      console.log(
+        "PANDADOC PDF DOWNLOAD RESPONSE:",
+        documentId,
+        res.status,
+        res.statusText
+      );
+
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+
+        console.log(
+          "PANDADOC PDF DOWNLOAD SUCCESS:",
+          documentId,
+          "bytes:",
+          buffer.byteLength
+        );
+
+        return new Uint8Array(buffer);
+      }
+
+      const errorBody = await res.text();
+
+      console.error(
+        "PANDADOC PDF DOWNLOAD FAILED:",
+        documentId,
+        errorBody.slice(0, 500)
+      );
+
+      // PandaDoc is still generating the signed PDF.
+      if (res.status === 409 && attempt < maxAttempts) {
+        console.log(
+          `PANDADOC PDF NOT READY. RETRYING IN ${delayMs}ms...`
+        );
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, delayMs)
+        );
+
+        continue;
+      }
+
+      return null;
+    } catch (e) {
+      console.error(
+        "PANDADOC PDF DOWNLOAD ERROR:",
+        documentId,
+        e instanceof Error ? e.message : String(e)
+      );
+
+      if (attempt < maxAttempts) {
+        console.log(
+          `PANDADOC PDF DOWNLOAD ERROR. RETRYING IN ${delayMs}ms...`
+        );
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, delayMs)
+        );
+
+        continue;
+      }
+
+      return null;
+    }
   }
+
+  return null;
 }
 
 

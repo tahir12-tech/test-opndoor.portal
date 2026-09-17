@@ -60,12 +60,51 @@ Deno.serve(async (req) => {
         } catch { /* never mask */ }
         continue;
       }
-      let path: string | null = null;
+  let path: string | null = null;
+
+      console.log("=== DEED PDF DEBUG START ===");
+      console.log("Document ID:", docId);
+      console.log("Guarantee Ref:", app?.guarantee_ref);
+      console.log("Application ID:", app?.id);
+
       const pdf = await downloadPdf(docId);
-      if (pdf && app) {
-        path = `${app.id}/${app.guarantee_ref}.pdf`;
-        await service.storage.from("deeds").upload(path, pdf, { contentType: "application/pdf", upsert: true });
+
+      console.log("PDF RESULT:", {
+        exists: !!pdf,
+        bytes: pdf?.length ?? 0,
+      });
+
+      // PDF download fail ho to deed ko executed mark mat karo
+      if (!pdf) {
+        throw new Error(
+          `Executed PDF is not ready/downloadable for PandaDoc document ${docId}`
+        );
       }
+
+      if (app) {
+        path = `${app.id}/${app.guarantee_ref}.pdf`;
+
+        console.log("PDF STORAGE PATH:", path);
+
+        const { error: uploadError } = await service.storage
+          .from("deeds")
+          .upload(path, pdf, {
+            contentType: "application/pdf",
+            upsert: true,
+          });
+
+        console.log("PDF UPLOAD RESULT:", {
+          success: !uploadError,
+          error: uploadError?.message ?? null,
+        });
+
+        if (uploadError) {
+          throw new Error(`PDF upload failed: ${uploadError.message}`);
+        }
+      }
+
+      console.log("FINAL PDF PATH:", path);
+      console.log("=== DEED PDF DEBUG END ===");
       // supabase-js returns a DB error object rather than throwing: check it, or a
       // transient failure would leave the deed un-executed while the "signed and
       // issued" emails below still send. Delete the dedup row (so a PandaDoc retry
