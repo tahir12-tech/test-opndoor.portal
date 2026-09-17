@@ -12,6 +12,7 @@
 // =====================================================================
 import { titleCaseAddress } from "./text.ts";
 
+
 const API = "https://api.pandadoc.com/public/v1";
 // Trim: a stray space pasted into a secret (e.g. a leading space on the template
 // id) otherwise yields PandaDoc 404 "Template is not available".
@@ -24,18 +25,22 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
 const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
 
+
 export function pandadocConfigured(): boolean {
   return Boolean(KEY && TEMPLATE_ID);
 }
+
 
 function headers(): Record<string, string> {
   return { Authorization: `API-Key ${KEY}`, "Content-Type": "application/json" };
 }
 
+
 function fmtDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || "");
 }
+
 
 /** Today's date in Europe/London, as both dd/mm/yyyy (deed) and yyyy-mm-dd (DB). */
 function londonToday(): { dmy: string; iso: string } {
@@ -45,6 +50,7 @@ function londonToday(): { dmy: string; iso: string } {
   const y = parts.find((p) => p.type === "year")!.value;
   return { dmy: `${d}/${m}/${y}`, iso: `${y}-${m}-${d}` };
 }
+
 
 export interface DeedApp {
   id: string;
@@ -63,6 +69,7 @@ export interface DeedApp {
   reissue?: boolean;
 }
 
+
 // The six merge tokens. The docx must define these token names (the naming is
 // the contract that keeps the template swappable with no code change). issue_date
 // is the deed's dated line (a merge token, never a recipient-editable field).
@@ -79,6 +86,7 @@ function tokens(a: DeedApp, issueDate: string) {
   ];
 }
 
+
 export interface DeedResult {
   ok: boolean;
   documentId?: string;
@@ -86,6 +94,7 @@ export interface DeedResult {
   issueDateIso?: string;
   error?: string;
 }
+
 
 /** Create the deed document from the template and send it to the tenant to sign. */
 export async function createAndSend(a: DeedApp): Promise<DeedResult> {
@@ -110,6 +119,7 @@ export async function createAndSend(a: DeedApp): Promise<DeedResult> {
     const created = await createRes.json();
     const docId = created.id as string;
 
+
     // The document processes asynchronously to "document.draft" before it can be sent.
     for (let i = 0; i < 8; i++) {
       const st = await fetch(`${API}/documents/${docId}`, { headers: headers() });
@@ -117,6 +127,7 @@ export async function createAndSend(a: DeedApp): Promise<DeedResult> {
       if (doc.status === "document.draft") break;
       await new Promise((r) => setTimeout(r, 1500));
     }
+
 
     // Explicit opndoor-branded notification copy (the sender display name itself
     // is account-level in PandaDoc, not settable per document; see the runbook).
@@ -140,6 +151,7 @@ export async function createAndSend(a: DeedApp): Promise<DeedResult> {
     });
    if (!sendRes.ok) return { ok: false, documentId: docId, error: `PandaDoc send ${sendRes.status}: ${(await sendRes.text()).slice(0, 300)}` };
 
+
     // Also notify the review address (PandaDoc's own email only reaches the
     // real recipient; this is a separate FYI copy via Resend).
     // if (REVIEW && RESEND_API_KEY) {
@@ -160,11 +172,13 @@ export async function createAndSend(a: DeedApp): Promise<DeedResult> {
     //   }).catch(() => {});
     // }
 
+
     return { ok: true, documentId: docId, issueDateIso: issue.iso };
   } catch (e) {
     return { ok: false, error: `PandaDoc request failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
 
 const VOID_TIMEOUT_MS = 10_000;
 const TERMINAL_STATUSES = ["document.completed", "document.declined", "document.voided", "document.expired", "document.paid"];
@@ -177,6 +191,7 @@ function prettyStatus(s: string): string {
     "document.paid": "paid",
   } as Record<string, string>)[s] ?? s.replace("document.", "");
 }
+
 
 export interface RemindContext {
   guarantee_ref: string;
@@ -192,6 +207,7 @@ export interface RemindResult {
   /** Raw technical detail, logged opndoor-admin-only (never shown to partners). */
   technical?: string;
 }
+
 
 /**
  * Nudge the tenant to sign again, in whatever state the document is in. The
@@ -217,6 +233,7 @@ export async function remindSignature(documentId: string, ctx: RemindContext): P
   const recipientId: string | null = rec?.recipient_id ?? rec?.id ?? null;
   const recipientEmail: string = ctx.tenant_email;
 
+
   // Preferred: PandaDoc's manual reminder (valid in SENT and VIEWED).
   if (recipientId) {
     const remRes = await fetch(`${API}/documents/${documentId}/send-reminder`, {
@@ -237,6 +254,7 @@ export async function remindSignature(documentId: string, ctx: RemindContext): P
     // fall through to the link email if the plan/endpoint rejects it
   }
 
+
   // Fallback: mint a fresh signing-session link and email it ourselves.
   const { link, detail } = await signingLink(documentId, recipientEmail);
   if (!link) return { ok: false, error: "Reminder could not be sent, please try again shortly.", technical: detail ?? "Could not create a PandaDoc signing session for the tenant." };
@@ -246,6 +264,7 @@ export async function remindSignature(documentId: string, ctx: RemindContext): P
   if (!em.ok) return { ok: false, error: "Reminder could not be sent, email service awaiting configuration.", technical: em.error };
   return { ok: true, method: "link" };
 }
+
 
 /** A shareable signing-session link for a recipient (valid ~7 days). */
 // async function signingLink(documentId: string, recipientEmail: string): Promise<string | null> {
@@ -263,6 +282,7 @@ export async function remindSignature(documentId: string, ctx: RemindContext): P
 //   }
 // }
 
+
 async function signingLink(documentId: string, recipientEmail: string): Promise<{ link: string | null; detail?: string }> {
   try {
     const res = await fetch(`${API}/documents/${documentId}/session`, {
@@ -277,6 +297,7 @@ async function signingLink(documentId: string, recipientEmail: string): Promise<
     return { link: null, detail: `Session request failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
 
 /** Email the tenant the signing link (redirected to the review address in sandbox). */
 // async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindContext): Promise<{ ok: boolean; error?: string }> {
@@ -315,7 +336,9 @@ async function signingLink(documentId: string, recipientEmail: string): Promise<
 //   }
 // }
 
+
 //redirct to user
+
 
 async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindContext): Promise<{ ok: boolean; error?: string }> {
   if (!RESEND_API_KEY) return { ok: false, error: "Resend is not configured, so the signing link could not be emailed." };
@@ -349,6 +372,7 @@ async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindCo
   }
 }
 
+
 /**
  * Void (retire) an outstanding document so the tenant can no longer sign it.
  * PandaDoc has no "voided" verb via API; the supported cancel path is setting
@@ -380,6 +404,7 @@ async function pandadocFetch(url: string, init: RequestInit, tries = 3): Promise
   return null;
 }
 
+
 /** Current PandaDoc status, or null when it cannot be read. */
 async function documentStatus(documentId: string): Promise<string | null> {
   const res = await pandadocFetch(`${API}/documents/${documentId}`, { headers: headers() });
@@ -391,6 +416,7 @@ async function documentStatus(documentId: string): Promise<string | null> {
   }
 }
 
+
 export async function voidDocument(documentId: string): Promise<{ ok: boolean; alreadyGone?: boolean; signed?: boolean; error?: string }> {
   if (!pandadocConfigured()) return { ok: false, error: "PandaDoc is not configured." };
   try {
@@ -400,6 +426,7 @@ export async function voidDocument(documentId: string): Promise<{ ok: boolean; a
     body: JSON.stringify({ status: 11, note: "Superseded by a regenerated deed.", notify_recipients: false }),
   });
   if (res?.ok) return { ok: true };
+
 
   const detail = res ? `PandaDoc void ${res.status}: ${(await res.text()).slice(0, 200)}` : "PandaDoc void request timed out.";
   // The PATCH was rejected or never landed. Re-read the document rather than
@@ -418,6 +445,7 @@ export async function voidDocument(documentId: string): Promise<{ ok: boolean; a
   }
 }
 
+
 /** Download the executed PDF (available once the document is completed). */
 export async function downloadPdf(documentId: string): Promise<Uint8Array | null> {
   try {
@@ -429,6 +457,7 @@ export async function downloadPdf(documentId: string): Promise<Uint8Array | null
   }
 }
 
+
 /** PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key. */
 export async function verifyWebhook(
   rawBody: string,
@@ -439,6 +468,7 @@ export async function verifyWebhook(
     return false;
   }
 
+
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(WEBHOOK_KEY),
@@ -447,23 +477,28 @@ export async function verifyWebhook(
     ["sign"]
   );
 
+
   const mac = await crypto.subtle.sign(
     "HMAC",
     key,
     new TextEncoder().encode(rawBody)
   );
 
+
   const expected = [...new Uint8Array(mac)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+
 
   console.log("Received signature length:", signature.length);
   console.log("Expected signature length:", expected.length);
   console.log("Signature format valid:", /^[a-f0-9]+$/i.test(signature));
   console.log("Signature match:", expected.toLowerCase() === signature.toLowerCase());
 
+
   return expected.toLowerCase() === signature.toLowerCase();
 }
+
 
 /**
  * Generate and send the deed for an application (agent email resolved server
@@ -483,6 +518,7 @@ export async function generateDeed(service: any, appId: string, reissue = false)
   if (!app) return { ok: false, error: "Application not found." };
   if (app.payment_state === "refunded") return { ok: false, error: "A deed cannot be generated for a refunded application." };
 
+
   const { data: contact } = await service.rpc("effective_primary_contact", { p_branch: app.branch_id });
   const c = Array.isArray(contact) ? contact[0] : contact;
   const agentEmail = c?.email ?? null;
@@ -491,6 +527,7 @@ export async function generateDeed(service: any, appId: string, reissue = false)
     await service.from("activity_log").insert({ application_id: appId, kind: "deed_error", message: "Deed not generated: add an agent contact for this branch, then retry.", actor: "System", visibility: "internal" });
     return { ok: false, error: "No agent contact for this branch. Add one, then retry." };
   }
+
 
   const res = await createAndSend({ ...app, agent_email: agentEmail, reissue });
   if (!res.ok) {
@@ -508,3 +545,6 @@ export async function generateDeed(service: any, appId: string, reissue = false)
   }
   return res;
 }
+
+
+
