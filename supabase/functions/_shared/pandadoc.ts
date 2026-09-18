@@ -447,18 +447,14 @@ export async function voidDocument(documentId: string): Promise<{ ok: boolean; a
 
 
 /** Download the executed PDF (available once the document is completed). */
-/** Download the executed PDF (available once the document is completed). */
+
+
 export async function downloadPdf(documentId: string): Promise<Uint8Array | null> {
-  const maxAttempts = 5;
-  const delayMs = 3000;
+  const maxDelayMs = 12000;
+  const startTime = Date.now();
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  while (Date.now() - startTime < maxDelayMs) {
     try {
-      console.log(
-        `PANDADOC PDF DOWNLOAD ATTEMPT ${attempt}/${maxAttempts}:`,
-        documentId
-      );
-
       const res = await fetch(
         `${API}/documents/${documentId}/download`,
         {
@@ -467,43 +463,23 @@ export async function downloadPdf(documentId: string): Promise<Uint8Array | null
           },
         }
       );
-
-      console.log(
-        "PANDADOC PDF DOWNLOAD RESPONSE:",
-        documentId,
-        res.status,
-        res.statusText
-      );
-
       if (res.ok) {
         const buffer = await res.arrayBuffer();
-
-        console.log(
-          "PANDADOC PDF DOWNLOAD SUCCESS:",
-          documentId,
-          "bytes:",
-          buffer.byteLength
-        );
-
         return new Uint8Array(buffer);
       }
 
-      const errorBody = await res.text();
-
-      console.error(
-        "PANDADOC PDF DOWNLOAD FAILED:",
-        documentId,
-        errorBody.slice(0, 500)
-      );
-
       // PandaDoc is still generating the signed PDF.
-      if (res.status === 409 && attempt < maxAttempts) {
-        console.log(
-          `PANDADOC PDF NOT READY. RETRYING IN ${delayMs}ms...`
-        );
+      if (res.status === 409) {
+        const elapsed = Date.now() - startTime;
+        const remaining = maxDelayMs - elapsed;
 
+        if (remaining <= 0) {
+          return null;
+        }
+
+        // Retry after 1 second, but stop completely after 12 seconds.
         await new Promise((resolve) =>
-          setTimeout(resolve, delayMs)
+          setTimeout(resolve, Math.min(1000, remaining))
         );
 
         continue;
@@ -511,30 +487,23 @@ export async function downloadPdf(documentId: string): Promise<Uint8Array | null
 
       return null;
     } catch (e) {
-      console.error(
-        "PANDADOC PDF DOWNLOAD ERROR:",
-        documentId,
-        e instanceof Error ? e.message : String(e)
-      );
+      const elapsed = Date.now() - startTime;
+      const remaining = maxDelayMs - elapsed;
 
-      if (attempt < maxAttempts) {
-        console.log(
-          `PANDADOC PDF DOWNLOAD ERROR. RETRYING IN ${delayMs}ms...`
-        );
-
-        await new Promise((resolve) =>
-          setTimeout(resolve, delayMs)
-        );
-
-        continue;
+      if (remaining <= 0) {
+        return null;
       }
 
-      return null;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(1000, remaining))
+      );
     }
   }
 
   return null;
 }
+
+
 
 
 /** PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key. */
