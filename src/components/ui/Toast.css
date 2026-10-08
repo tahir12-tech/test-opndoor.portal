@@ -75,13 +75,9 @@
   border-radius: 50%;
   padding: 3px;
   flex-shrink: 0;
-<<<<<<< HEAD
-}
-=======
 }
 
 /* Error toasts. The default (.toast--ok) keeps the existing appearance exactly,
    so nothing that already calls toast(message) changes. */
 .toast--error { background: #7f1d1d; }
 .toast--error svg { color: #fecaca; }
->>>>>>> partner-api
