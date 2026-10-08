@@ -77,7 +77,7 @@
   flex-shrink: 0;
 }
 
-/* Error toasts. The default (.toast--ok) keeps the existing appearance exactly,
-   so nothing that already calls toast(message) changes. */
+/* Success/error tone modifier classes emitted by Toast.tsx. */
+.toast--ok { background: #16a34a; }
 .toast--error { background: #7f1d1d; }
 .toast--error svg { color: #fecaca; }

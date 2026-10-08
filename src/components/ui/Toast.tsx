@@ -72,21 +72,37 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const seq = useRef(0);
   const timers = useRef<number[]>([]);
 
-  const toast = useCallback((message: string, tone: ToastTone = 'ok') => {
-    const id = ++seq.current;
-    const life = tone === 'error' ? ERROR_DURATION : DURATION;
-    // Whatever was showing is finished with, and so are its timers.
-    timers.current.forEach(window.clearTimeout);
-    timers.current = [];
-    setToasts([{ id, message, tone, shown: false }]);
-    // animate in on the next frame
-    requestAnimationFrame(() => setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, shown: true } : t))));
-    // dismiss
-    timers.current.push(
-      window.setTimeout(() => setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, shown: false } : t))), life),
-      window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), life + 260),
-    );
-  }, []);
+const toast = useCallback((message: string, tone: ToastTone = 'ok') => {
+  const id = ++seq.current;
+  const life = tone === 'error' ? ERROR_DURATION : DURATION;
+
+  // Whatever was showing is finished with, and so are its timers.
+  timers.current.forEach(window.clearTimeout);
+  timers.current = [];
+
+  // Show immediately instead of waiting for requestAnimationFrame.
+  setToasts([{ id, message, tone, shown: true }]);
+
+  // dismiss
+  timers.current.push(
+    window.setTimeout(
+      () =>
+        setToasts((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, shown: false } : t
+          )
+        ),
+      life
+    ),
+    window.setTimeout(
+      () =>
+        setToasts((prev) =>
+          prev.filter((t) => t.id !== id)
+        ),
+      life + 260
+    ),
+  );
+}, []);
 
   // A provider unmounting mid-toast must not leave a timer holding a setState.
   useEffect(() => () => { timers.current.forEach(window.clearTimeout); }, []);
