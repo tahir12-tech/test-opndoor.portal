@@ -51,11 +51,7 @@ Deno.serve(async (req) => {
     // RLS-scoped read: the caller must be able to see the application.
     const { data: app, error } = await userClient
       .from("applications")
-<<<<<<< HEAD
-      .select("id, status, payment_state, deed_state, pandadoc_document_id")
-=======
       .select("id, status, deed_state, pandadoc_document_id, livemode")
->>>>>>> partner-api
       .eq("guarantee_ref", ref)
       .maybeSingle();
     if (error) {

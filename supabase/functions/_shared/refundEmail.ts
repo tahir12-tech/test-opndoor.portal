@@ -1,20 +1,5 @@
-<<<<<<< HEAD
-// =====================================================================
-// Tenant refund confirmation email, sent from the Stripe charge.refunded
-// webhook. Branded shell shared with the rest of the portal's emails; ALWAYS
-// redirected to EMAIL_REVIEW_ADDRESS in this test build (the real recipient
-// appears only in the "intended for" banner). Idempotency is owned by the
-// caller (the stripe_events dedup means charge.refunded runs once per event).
-// =====================================================================
-// deno-lint-ignore-file no-explicit-any
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <noreply@opndoor.co>";
-const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-// const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
-=======
 import { sendMessage } from "./mailer.ts";
 import { refundEmail, guaranteesCancelledEmail } from "./emailTemplates.ts";
->>>>>>> partner-api
 
 export async function deliverRefund(service: any, p: { appId: string; tenantEmail: string; title: string; lastName: string; propertyAddr: string; amount: string; guaranteeRef: string; deedCancelled?: boolean; cascaded?: boolean }): Promise<void> {
   if (!p.tenantEmail) return;

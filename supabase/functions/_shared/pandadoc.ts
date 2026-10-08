@@ -31,32 +31,12 @@ import { resolveRecipients } from "./emailRecipients.ts";
 
 
 const API = "https://api.pandadoc.com/public/v1";
-<<<<<<< HEAD
-// Trim: a stray space pasted into a secret (e.g. a leading space on the template
-// id) otherwise yields PandaDoc 404 "Template is not available".
-const KEY = (Deno.env.get("PANDADOC_API_KEY") ?? "").trim();
-const TEMPLATE_ID = (Deno.env.get("PANDADOC_TEMPLATE_ID") ?? "").trim();
-const WEBHOOK_KEY = (Deno.env.get("PANDADOC_WEBHOOK_SHARED_KEY") ?? "").trim();
-// const REVIEW = (Deno.env.get("EMAIL_REVIEW_ADDRESS") ?? "").trim();
-// For the fallback signing-link email (when PandaDoc's own reminder is unavailable).
-=======
->>>>>>> partner-api
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <payments@opndoor.co>";
 /* REPLY GOES WHERE THE FOOTER SAYS. Matt, 2026-10-01: "Set the
    Reply-To header on every email to support@opndoor.co, so pressing
    Reply also reaches support."
 
-<<<<<<< HEAD
-
-export function pandadocConfigured(): boolean {
-  return Boolean(KEY && TEMPLATE_ID);
-}
-
-
-function headers(): Record<string, string> {
-  return { Authorization: `API-Key ${KEY}`, "Content-Type": "application/json" };
-=======
    The default was hello@opndoor.co, the general contact address, so
    the footer told a reader one thing and the Reply button did
    another the moment EMAIL_REPLY_TO was unset -- which it is. The
@@ -78,7 +58,6 @@ export function pandadocConfigured(livemode: boolean): boolean {
 
 function headers(key: string): Record<string, string> {
   return { Authorization: `API-Key ${key}`, "Content-Type": "application/json" };
->>>>>>> partner-api
 }
 
 
@@ -87,8 +66,6 @@ function fmtDate(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || "");
 }
 
-<<<<<<< HEAD
-=======
 /* THE SAME DATE, SPELLED, FOR ANYTHING A PERSON READS. Matt, 2026-10-01:
    "Show dates as '29 Dec 2026', including in the PandaDoc email text."
 
@@ -114,7 +91,6 @@ function longDate(iso: string): string {
 }
 
 
->>>>>>> partner-api
 
 /** Today's date in Europe/London, as both dd/mm/yyyy (deed) and yyyy-mm-dd (DB). */
 function londonToday(): { dmy: string; iso: string } {
@@ -151,12 +127,6 @@ export interface DeedApp {
   tenancy_tenant_names?: string | null;
 }
 
-<<<<<<< HEAD
-
-// The six merge tokens. The docx must define these token names (the naming is
-// the contract that keeps the template swappable with no code change). issue_date
-// is the deed's dated line (a merge token, never a recipient-editable field).
-=======
 // The merge tokens. The docx must define these token names (the naming is the
 // contract that keeps the template swappable with no code change). issue_date is
 // the deed's dated line (a merge token, never a recipient-editable field).
@@ -177,7 +147,6 @@ export interface DeedApp {
 // tenant_name still carries EVERY tenant, which is the part of the joint design
 // the document does keep: the deed says what tenancy it is part of. On a solo
 // application that list is the applicant alone, so the value is unchanged.
->>>>>>> partner-api
 function tokens(a: DeedApp, issueDate: string) {
   // #8 Title-case the printed deed's address merge field for display; postcode left raw.
   const address = [titleCaseAddress(a.prop_addr1), titleCaseAddress(a.prop_addr2), titleCaseAddress(a.prop_city), a.prop_postcode].filter(Boolean).join(", ");
@@ -319,30 +288,6 @@ export async function createAndSend(a: DeedApp, livemode: boolean): Promise<Deed
     });
    if (!sendRes.ok) return { ok: false, documentId: docId, error: `PandaDoc send ${sendRes.status}: ${(await sendRes.text()).slice(0, 300)}` };
 
-<<<<<<< HEAD
-
-    // Also notify the review address (PandaDoc's own email only reaches the
-    // real recipient; this is a separate FYI copy via Resend).
-    // if (REVIEW && RESEND_API_KEY) {
-    //   const reviewHtml = `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
-    //     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;"><tr><td align="center">
-    //       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;">
-    //         <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#fff;">opndoor</span></td></tr>
-    //         <tr><td style="padding:10px 16px;background:#f8eff9;font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">Review copy. The deed-signing email was sent to ${a.tenant_email}.</td></tr>
-    //         <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#271d5f;">
-    //           <p style="margin:0 0 14px;">${message}</p>
-    //         </td></tr>
-    //       </table
-    //     </td></tr></table></body></html>`;
-    //   await fetch("https://api.resend.com/emails", {
-    //     method: "POST",
-    //     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-    //     body: JSON.stringify({ from: EMAIL_FROM, to: [REVIEW], reply_to: REPLY_TO, subject: `[Review copy] ${subject}`, html: reviewHtml }),
-    //   }).catch(() => {});
-    // }
-
-=======
->>>>>>> partner-api
 
     return { ok: true, documentId: docId, issueDateIso: issue.iso };
   } catch (e) {
@@ -351,7 +296,7 @@ export async function createAndSend(a: DeedApp, livemode: boolean): Promise<Deed
 }
 
 
-const VOID_TIMEOUT_MS = 10_000;
+
 const TERMINAL_STATUSES = ["document.completed", "document.declined", "document.voided", "document.expired", "document.paid"];
 function prettyStatus(s: string): string {
   return ({
@@ -461,16 +406,11 @@ export async function remindSignature(documentId: string, ctx: RemindContext, li
 //   }
 // }
 
-<<<<<<< HEAD
-
-async function signingLink(documentId: string, recipientEmail: string): Promise<{ link: string | null; detail?: string }> {
-=======
 async function signingLink(documentId: string, recipientEmail: string, key: string): Promise<{ link: string | null; detail?: string }> {
   // Match the recipient the document was created with: createAndSend redirects the
   // recipient to the review address wherever EMAIL_REVIEW_ADDRESS is set, so the
   // session must redirect the same way or PandaDoc answers "no associated recipient".
   const recipient = resolveRecipients(recipientEmail).to[0] ?? recipientEmail;
->>>>>>> partner-api
   try {
     const res = await fetch(`${API}/documents/${documentId}/session`, {
       method: "POST",
@@ -547,23 +487,6 @@ async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindCo
  * the document's real status is re-read, so `ok` means "confirmed unsignable",
  * and `signed` distinguishes the one terminal state that is not a safe outcome.
  */
-<<<<<<< HEAD
-async function pandadocFetch(url: string, init: RequestInit, tries = 3): Promise<Response | null> {
-  let last: unknown = null;
-  for (let i = 0; i < tries; i++) {
-    try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(VOID_TIMEOUT_MS) });
-      // Retry only what a retry can fix (rate limit / transient upstream).
-      if (res.status === 429 || res.status >= 500) {
-        last = `HTTP ${res.status}`;
-        if (i < tries - 1) { await new Promise((r) => setTimeout(r, 1000 * (i + 1))); continue; }
-      }
-      return res;
-    } catch (e) {
-      last = e;
-      if (i < tries - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
-    }
-=======
 export async function voidDocument(documentId: string, livemode: boolean): Promise<{ ok: boolean; alreadyGone?: boolean; error?: string }> {
   const cfg = pandadocConfigFor(livemode);
   if (!cfg.ok) return { ok: false, error: cfg.error };
@@ -581,52 +504,9 @@ export async function voidDocument(documentId: string, livemode: boolean): Promi
     return { ok: false, error: `PandaDoc void ${res.status}: ${body}` };
   } catch (e) {
     return { ok: false, error: `PandaDoc void failed: ${e instanceof Error ? e.message : String(e)}` };
->>>>>>> partner-api
-  }
-  return null;
-}
-
-<<<<<<< HEAD
-
-/** Current PandaDoc status, or null when it cannot be read. */
-async function documentStatus(documentId: string): Promise<string | null> {
-  const res = await pandadocFetch(`${API}/documents/${documentId}`, { headers: headers() });
-  if (!res?.ok) return null;
-  try {
-    return (await res.json())?.status ?? null;
-  } catch {
-    return null;
   }
 }
 
-
-export async function voidDocument(documentId: string): Promise<{ ok: boolean; alreadyGone?: boolean; signed?: boolean; error?: string }> {
-  if (!pandadocConfigured()) return { ok: false, error: "PandaDoc is not configured." };
-  try {
-  const res = await pandadocFetch(`${API}/documents/${documentId}/status`, {
-    method: "PATCH",
-    headers: headers(),
-    body: JSON.stringify({ status: 11, note: "Superseded by a regenerated deed.", notify_recipients: false }),
-  });
-  if (res?.ok) return { ok: true };
-
-
-  const detail = res ? `PandaDoc void ${res.status}: ${(await res.text()).slice(0, 200)}` : "PandaDoc void request timed out.";
-  // The PATCH was rejected or never landed. Re-read the document rather than
-  // assuming: only a terminal status proves the link can no longer be signed.
-  const status = await documentStatus(documentId);
-  if (status && TERMINAL_STATUSES.includes(status)) {
-    return { ok: true, alreadyGone: true, signed: status === "document.completed", error: detail };
-  }
-  // A 404 means there is no such document left to sign.
-  if (!status && res?.status === 404) return { ok: true, alreadyGone: true, error: detail };
-  return { ok: false, error: status ? `${detail} (document is still ${prettyStatus(status)})` : detail };
-  } catch (e) {
-    // Never throw: the refund caller must be able to log and alert on a failed
-    // void rather than 500 on an event Stripe has already been told is handled.
-    return { ok: false, error: `PandaDoc void failed: ${e instanceof Error ? e.message : String(e)}` };
-  }
-=======
 /** Download the executed PDF (available once the document is completed). */
 export interface PdfResult {
   ok: boolean;
@@ -645,17 +525,7 @@ export interface PdfResult {
    asynchronously AFTER it fires document.completed, so a download issued the
    moment the callback lands can legitimately 404 for a few seconds. That is the
    commonest reason a deed ends up executed with no stored document. */
-export async function downloadPdf(documentId: string, livemode: boolean): Promise<PdfResult> {
-  const cfg = pandadocConfigFor(livemode);
-  if (!cfg.ok) return { ok: false, error: cfg.error };
-  try {
-    const res = await fetch(`${API}/documents/${documentId}/download`, { headers: { Authorization: `API-Key ${cfg.value.key}` } });
-    if (!res.ok) return { ok: false, error: `PandaDoc download ${res.status}: ${(await res.text()).slice(0, 200)}` };
-    return { ok: true, bytes: new Uint8Array(await res.arrayBuffer()) };
-  } catch (e) {
-    return { ok: false, error: `PandaDoc download failed: ${e instanceof Error ? e.message : String(e)}` };
-  }
-}
+
 
 /**
  * PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key.
@@ -743,7 +613,6 @@ async function failGeneration(service: any, appId: string, message: string, opsT
     application_id: appId, kind: "deed_error", message, actor: "System", visibility: "internal",
   });
   await service.rpc("report_ops_incident", { p_type: opsType, p_detail: `Application ${appId}: ${message}` }).then(() => {}, () => {});
->>>>>>> partner-api
 }
 
 
@@ -807,46 +676,7 @@ export async function downloadPdf(documentId: string): Promise<Uint8Array | null
 
 
 
-/** PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key. */
-export async function verifyWebhook(
-  rawBody: string,
-  signature: string
-): Promise<boolean> {
-  if (!WEBHOOK_KEY || !signature) {
-    console.log("WEBHOOK KEY OR SIGNATURE MISSING");
-    return false;
-  }
 
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(WEBHOOK_KEY),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-
-  const mac = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(rawBody)
-  );
-
-
-  const expected = [...new Uint8Array(mac)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-
-  console.log("Received signature length:", signature.length);
-  console.log("Expected signature length:", expected.length);
-  console.log("Signature format valid:", /^[a-f0-9]+$/i.test(signature));
-  console.log("Signature match:", expected.toLowerCase() === signature.toLowerCase());
-
-
-  return expected.toLowerCase() === signature.toLowerCase();
-}
 
 
 /**
@@ -859,18 +689,7 @@ export async function verifyWebhook(
 // suppressed so the amend caller can log a single combined amend entry.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function generateDeed(service: any, appId: string, reissue = false): Promise<DeedResult> {
-<<<<<<< HEAD
-  const { data: app } = await service
-    .from("applications")
-    .select("id, guarantee_ref, tenant_first_name, tenant_last_name, tenant_email, tenancy_start, prop_addr1, prop_addr2, prop_city, prop_postcode, branch_id, payment_state")
-    .eq("id", appId)
-    .maybeSingle();
-  if (!app) return { ok: false, error: "Application not found." };
-  if (app.payment_state === "refunded") return { ok: false, error: "A deed cannot be generated for a refunded application." };
-
-=======
   /* ONE GENERATION AT A TIME, AND THIS IS THE ONLY PLACE IT CAN BE ENFORCED.
->>>>>>> partner-api
 
      The document-exists check below closes the SEQUENTIAL double-press: a second
      Generate arriving after the first has stamped its id is refused. It cannot
@@ -971,10 +790,6 @@ async function runGeneration(service: any, appId: string, reissue: boolean): Pro
     }
   }
 
-<<<<<<< HEAD
-
-  const res = await createAndSend({ ...app, agent_email: agentEmail, reissue });
-=======
   const { data: tgt, error: tgtErr } = await service.rpc("deed_target", { p_application: appId });
   // A FAILED deed_target USED TO READ AS "SOLO TENANCY, ALREADY PAID".
   //
@@ -1072,7 +887,6 @@ async function runGeneration(service: any, appId: string, reissue: boolean): Pro
     // the document is the same six-token deed on both.
     tenancy_tenant_names: joint ? (unit?.tenant_names as string | null) : null,
   }, app.livemode === true);
->>>>>>> partner-api
   if (!res.ok) {
     // Every PandaDoc-side reason lands here, and on production the commonest by
     // far is not a per-application fault at all: an unset PANDADOC_API_KEY or

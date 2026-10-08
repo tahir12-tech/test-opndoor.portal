@@ -9,13 +9,9 @@
 // (tenancy-correction) cannot drift apart.
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
-<<<<<<< HEAD
-import { isExecutedDeed, reissueDeedForAmendment } from "../_shared/deedReissue.ts";
-=======
 import { notifyReferrer } from "../_shared/referrerNotify.ts";
 import { voidDocument, generateDeed } from "../_shared/pandadoc.ts";
 import { deliverSigningInvite } from "../_shared/signingInvite.ts";
->>>>>>> partner-api
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -151,13 +147,6 @@ Deno.serve(async (req) => {
       .update({ resolved_at: new Date().toISOString(), resolved_by: userData.user?.id ?? null })
       .eq("application_id", app.id).is("resolved_at", null).not("submitted_at", "is", null);
 
-<<<<<<< HEAD
-    // 2) Deed lifecycle + the single business amend entry, shared with the agent
-    // self-serve path (tenancy-correction) so the two can never drift apart.
-    const out = await reissueDeedForAmendment(service, app, actor, dateChange);
-    if (!out.ok) return json({ ok: false, error: out.error }, 200);
-    return json({ ok: true, message: out.message });
-=======
     // Exactly one BUSINESS activity entry per amend, attributed by name, stating
     // old -> new. "The deed was reissued for signing" is appended ONLY when a
     // regeneration actually ran. Supporting steps (archive / void) are separate:
@@ -360,7 +349,6 @@ Deno.serve(async (req) => {
         ? `Tenancy start amended for all ${siblings.length} tenants, and ${reissued === 1 ? "one corrected deed was" : `${reissued} corrected deeds were`} sent for signing.`
         : "Tenancy start amended, and a corrected deed was sent to the tenant to sign.",
     });
->>>>>>> partner-api
   } catch (e) {
     return json({ ok: false, error: "Could not amend the tenancy start date." }, 500);
   }

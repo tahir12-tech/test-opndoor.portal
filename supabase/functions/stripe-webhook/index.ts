@@ -64,7 +64,7 @@ import { stripeSecretFor, stripeWebhookSecrets, maySendOpndoorEmail } from "../_
  * changing it would change the wire behaviour of the live payment path.)
  */
 function stripeClient(secret: string): Stripe {
-  // @ts-expect-error pinned apiVersion, older than the SDK types' latest literal
+
   return new Stripe(secret, { httpClient: Stripe.createFetchHttpClient(), apiVersion: "2024-06-20" });
 }
 
@@ -102,13 +102,6 @@ Deno.serve(async (req) => {
   const sig = req.headers.get("stripe-signature");
   const body = await req.text();
 
-<<<<<<< HEAD
-  let event: Stripe.Event;
-  try {
-    event = await stripe.webhooks.constructEventAsync(body, sig!, WEBHOOK_SECRET, undefined, Stripe.createSubtleCryptoProvider());
-  } catch (e) {
-    return new Response("Signature verification failed.", { status: 400 });
-=======
   // Verification is pure HMAC over the body and the signing secret; the API key
   // plays no part. So a throwaway client is enough to verify, and the real one is
   // built afterwards from the mode the signature established.
@@ -126,7 +119,6 @@ Deno.serve(async (req) => {
     } catch (e) {
       lastErr = e instanceof Error ? e.message : String(e);
     }
->>>>>>> partner-api
   }
   if (!event) return new Response(`Signature verification failed: ${lastErr}`, { status: 400 });
 
@@ -299,15 +291,6 @@ Deno.serve(async (req) => {
       const refundId = c.refunds?.data?.[0]?.id ?? c.id;
       if (pi) {
         const refundAmount = (c.amount_refunded ?? 0) / 100;
-<<<<<<< HEAD
-        const { error: refundErr } = await service.rpc("apply_stripe_refund", { p_payment_intent: pi, p_refund_id: refundId, p_amount: refundAmount });
-        if (refundErr) {
-          // Nothing has happened yet, so drop the dedup row: without it the 500
-          // below is deduped to a 200 on Stripe retry and the refund — including
-          // expiring the signing link — is never applied at all.
-          await service.from("stripe_events").delete().eq("id", event.id);
-          throw new Error(`apply_stripe_refund failed: ${refundErr.message}`);
-=======
         // Resolve the application from the payment intent first, so the mode can
         // be checked BEFORE the refund is applied rather than after.
         const { data: pre } = await service.from("applications").select("id").eq("stripe_payment_intent_id", pi).maybeSingle();
@@ -381,7 +364,6 @@ Deno.serve(async (req) => {
              on top of the accurate one just reported above. */
           return new Response(JSON.stringify({ error: "Could not apply the refund." }),
             { status: 500, headers: { "Content-Type": "application/json" } });
->>>>>>> partner-api
         }
         const { data: appRow } = await service.from("applications")
           .select("id, guarantee_ref, refund_after_start, tenant_title, tenant_last_name, tenant_email, prop_addr1, prop_postcode, pandadoc_document_id, deed_state, livemode, payment_state")
@@ -391,22 +373,6 @@ Deno.serve(async (req) => {
           if (appRow.refund_after_start) {
             await service.from("activity_log").insert({ application_id: appRow.id, kind: "refund_anomaly", message: "POLICY ANOMALY: refunded on or after the tenancy start date, outside the refund policy. Review required.", actor: "System" });
           }
-<<<<<<< HEAD
-          // The refund must expire the tenant's PandaDoc signing link. voidDocument
-          // reports ok only once PandaDoc confirms the document is unsignable, so
-          // the application is marked voided ONLY on that confirmation. Marking it
-          // voided regardless is what left a live link behind a "voided" record.
-          if (appRow.pandadoc_document_id && appRow.deed_state !== "executed") {
-            const docId = appRow.pandadoc_document_id;
-            const voidResult = await voidDocument(docId);
-
-            if (voidResult.ok && !voidResult.signed) {
-              await service.from("applications").update({
-                deed_state: "voided",
-                pandadoc_document_id: null,
-              }).eq("id", appRow.id);
-
-=======
           /* R2. ONLY A FULL REFUND VOIDS THE DEED.
              This used to fire on any refund at all, because apply_stripe_refund
              marked every refund 'refunded' whatever the amount. It now marks a
@@ -420,7 +386,6 @@ Deno.serve(async (req) => {
             const voidResult = await voidDocument(appRow.pandadoc_document_id, appRow.livemode === true);
             if (voidResult.ok) {
               await service.from("applications").update({ deed_state: "voided", pandadoc_document_id: null }).eq("id", appRow.id);
->>>>>>> partner-api
               await service.from("activity_log").insert({
                 application_id: appRow.id,
                 kind: "deed_voided",
@@ -429,15 +394,6 @@ Deno.serve(async (req) => {
                 visibility: "business",
               });
             } else {
-<<<<<<< HEAD
-              // Not confirmed dead (timeout, rejection, or already signed). Keep the
-              // document id ON the application: it is the only handle left for
-              // remediation, and it lets the completion webhook match the document
-              // and refuse to issue a deed. Clearing it here hides a live link.
-              const reason = voidResult.signed
-                ? "the tenant had already signed it"
-                : voidResult.error ?? "unknown error";
-=======
               // DEFECTS.md 9. There was no else. A PandaDoc timeout during a
               // refund left deed_state at awaiting_tenant with the document id
               // still set, so the signing link already in the tenant's inbox
@@ -452,29 +408,16 @@ Deno.serve(async (req) => {
               await service.from("applications")
                 .update({ deed_state: "error", pandadoc_document_id: null })
                 .eq("id", appRow.id);
->>>>>>> partner-api
 
               await service.from("activity_log").insert({
                 application_id: appRow.id,
                 kind: "deed_void_failed",
-<<<<<<< HEAD
-                message: `Deed signing link could NOT be expired after refund: ${reason}. The signing link may still be live — manual remediation required.`,
-=======
                 message: `Could not void the outstanding deed after a refund: ${voidResult.error ?? "no detail"}. `
                   + "The signing link may still work at PandaDoc. Void it there by hand.",
->>>>>>> partner-api
                 actor: "System",
                 visibility: "internal",
               });
 
-<<<<<<< HEAD
-              try {
-                await service.rpc("report_ops_incident", {
-                  p_type: "deed_void_failed",
-                  p_detail: `App ${appRow.guarantee_ref}: PandaDoc document ${docId} could not be expired after refund (${reason}). The signing link may still be live.`,
-                });
-              } catch { /* never mask */ }
-=======
               // Raised where operational failures already surface. Previously
               // this failure produced no log line, no activity row and no
               // incident: the only trace was the ABSENCE of the deed_voided row
@@ -484,7 +427,6 @@ Deno.serve(async (req) => {
                 p_detail: `Refund on ${appRow.guarantee_ref}: PandaDoc void failed (${voidResult.error ?? "no detail"}). `
                   + "Void the document in PandaDoc manually. The application has been set to deed_state=error.",
               }).then(() => {}, () => {});
->>>>>>> partner-api
             }
           }
 

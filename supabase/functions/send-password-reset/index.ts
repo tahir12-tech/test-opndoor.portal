@@ -114,9 +114,6 @@ Deno.serve(async (req) => {
     }
     return json({ ok: true });
   } catch (e) {
-<<<<<<< HEAD
-    return json({ ok: false, error: "Could not send the password reset email." }, 500);
-=======
     // Named rather than folded into a 500, so a dev run can tell "email is
     // switched off here" from "the code is broken", same as tenant-auth.
     if (e instanceof EmailNotConfigured) {
@@ -125,6 +122,5 @@ Deno.serve(async (req) => {
     }
     console.log(JSON.stringify({ event: "send_password_reset_error", message: String(e) }));
     return json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error." }, 500);
->>>>>>> partner-api
   }
 });

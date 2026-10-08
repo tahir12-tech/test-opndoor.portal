@@ -260,18 +260,8 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "No partner cursors initialised." }, 500);
     }
 
-<<<<<<< HEAD
-    const LIMIT = Number((await req.json().catch(() => ({})))?.limit ?? 200);
-    const { data: events, error: evErr } = await service.rpc("hubspot_pending_events", {
-      p_last_at: cur.last_at, p_last_id: cur.last_id, p_kinds: Object.keys(KIND_TO_EVENT), p_limit: LIMIT,
-    });
-    if (evErr) {
-      return json({ ok: false, error: "Could not load sync events." }, 500);
-    }
-=======
     const summaryWarn: string[] = [];
     const body = await req.json().catch(() => ({}));
->>>>>>> partner-api
 
     // ---- map verification ---------------------------------------------------
     //
@@ -788,15 +778,11 @@ Deno.serve(async (req) => {
     summary.ms = Date.now() - started;
     return json(summary, summary.ok ? 200 : 207);
   } catch (e) {
-<<<<<<< HEAD
-    return json({ ok: false, error: "HubSpot sync could not be completed." }, 500);
-=======
     // Nothing reached the CRM on this run and the response is a 500 the cron
     // does not read. Alert, on a type of its own so it is not deduped against
     // a per-partner failure in the same hour.
     const msg = e instanceof Error ? e.message : "Unexpected error.";
     await incident("hubspot_sync_error:run", `hubspot-sync run aborted before any partner completed: ${msg}`);
     return json({ ok: false, error: msg }, 500);
->>>>>>> partner-api
   }
 });

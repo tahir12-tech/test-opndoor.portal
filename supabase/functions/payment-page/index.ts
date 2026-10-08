@@ -351,7 +351,7 @@ Deno.serve(async (req) => {
       // The Stripe API version is pinned at 2024-06-20 across every function; the
       // SDK types only admit their latest literal, so this asserts the pin rather
       // than bumping the version (which would change API behaviour).
-      // @ts-expect-error pinned apiVersion, older than the SDK types' latest literal
+   
       const stripe = new Stripe(STRIPE_SECRET, { httpClient: Stripe.createFetchHttpClient(), apiVersion: "2024-06-20" });
       const session = await stripe.checkout.sessions.create({
         // Bounds the window in DEFECTS.md 8. Without it a session stays payable
@@ -418,7 +418,7 @@ Deno.serve(async (req) => {
         const canReinstate = full?.status === "withdrawn" && full?.withdrawn_by_tenant === true;
         if (!canReinstate) return json({ ok: false, error: isPaid ? "This fee has already been paid." : "This application is closed.", status: app.status }, 409);
       }
-      // @ts-expect-error pinned apiVersion, older than the SDK types' latest literal
+     
       const stripe = new Stripe(STRIPE_SECRET, { httpClient: Stripe.createFetchHttpClient(), apiVersion: "2024-06-20" });
       const session = await stripe.checkout.sessions.create({
         ui_mode: "embedded",

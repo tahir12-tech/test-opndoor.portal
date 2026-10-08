@@ -396,34 +396,24 @@ Deno.serve(async (req) => {
         type: "recovery", email, options: { redirectTo: landing },
       });
       if (error) {
-<<<<<<< HEAD
-        return json({ ok: false, error: "Could not load the user details." }, 400);
-      }
-=======
         const plain = await service.auth.admin.generateLink({
           type: "recovery", email, options: { redirectTo: `${base}/accept-invite` },
         });
         data = plain.data; error = plain.error;
       }
       if (error) return json({ ok: false, error: error.message }, 400);
->>>>>>> partner-api
       link = data?.properties?.action_link;
     } else {
       let { data, error } = await service.auth.admin.generateLink({
         type: "invite", email, options: { redirectTo: landing, data: { full_name: fullName } },
       });
       if (error) {
-<<<<<<< HEAD
-        return json({ ok: false, error: "Could not update the invitation." }, 400);
-      }
-=======
         const plain = await service.auth.admin.generateLink({
           type: "invite", email, options: { redirectTo: `${base}/accept-invite`, data: { full_name: fullName } },
         });
         data = plain.data; error = plain.error;
       }
       if (error) return json({ ok: false, error: error.message }, 400);
->>>>>>> partner-api
       link = data?.properties?.action_link;
       targetUserId = data?.user?.id;
       if (targetUserId) {

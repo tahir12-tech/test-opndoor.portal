@@ -1,27 +1,6 @@
 // =====================================================================
 // tenancy-correction (verify_jwt = false)
 //
-<<<<<<< HEAD
-// Public token exchange for #81. An agent opens the tokenised link from the deed
-// delivery email, sees the guarantee reference and the current tenancy start, and
-// submits the corrected date with an optional note.
-//
-// Submitting APPLIES the correction straight away, with no manual review step:
-// the tenancy start is written, the existing agreement is cancelled (a signed deed
-// is archived and superseded; an outstanding unsigned one is voided) and a
-// corrected deed is issued to the tenant to sign. The agent is re-notified
-// automatically when the replacement is executed, by the usual deed-delivery path.
-//
-// The deed lifecycle and its activity trail are the shared reissueDeedForAmendment
-// helper, the same code the staff amend flow runs, so the two cannot drift apart.
-//
-// The token is a random uuid scoped to one deed, expiring 7 days after the deed
-// was delivered (the same lifetime as the signed download link), and is single
-// use: once submitted it will not amend again.
-// =====================================================================
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { reissueDeedForAmendment } from "../_shared/deedReissue.ts";
-=======
 // Public token exchange for #81. An agent opens the tokenised link from the
 // executed-deed email, sees the guarantee reference and the current tenancy
 // start, and enters the correct date. Submitting APPLIES the correction
@@ -41,7 +20,6 @@ import { reissueDeedForAmendment } from "../_shared/deedReissue.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { voidDocument, generateDeed } from "../_shared/pandadoc.ts";
 import { deliverSigningInvite } from "../_shared/signingInvite.ts";
->>>>>>> partner-api
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -118,60 +96,6 @@ Deno.serve(async (req) => {
 
     if (b.action === "submit") {
       const proposed = String(b.proposedStart ?? "").trim(); // yyyy-mm-dd
-<<<<<<< HEAD
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(proposed) || outOfRange(proposed)) return json({ ok: false, error: "Enter a valid date." }, 200);
-      const note = String(b.note ?? "").trim().slice(0, 500) || null;
-      // Single use: a token that already amended must not amend again, so a stray
-      // re-submit can never trigger a second cancel-and-reissue cycle.
-      if (tok.submitted_at) return json({ ok: false, alreadySubmitted: true, error: "This correction has already been submitted." }, 200);
-      if (!app) return json({ ok: false, error: "This link is not valid." }, 200);
-      // Terminal applications are out of scope for a self-serve amend: record the
-      // report for opndoor instead of cancelling and reissuing anything.
-      const terminal = app.status === "withdrawn" || !!app.withdrawn_at || app.payment_state === "refunded";
-      const oldStart = app.tenancy_start ?? null;
-      if (proposed === oldStart) return json({ ok: false, error: "That is already the tenancy start date on the deed." }, 200);
-
-      const nowIso = new Date().toISOString();
-      // The submission is recorded either way. When it is applied automatically it
-      // is resolved in the same write, so it never enters the review queue.
-      await service.from("tenancy_correction_tokens").update({
-        proposed_start: proposed, note, submitted_at: nowIso,
-        resolved_at: terminal ? null : nowIso, resolved_by: null,
-      }).eq("token", token);
-
-      if (terminal) {
-        await service.from("activity_log").insert({
-          application_id: tok.application_id,
-          kind: "tenancy_correction_reported",
-          message: `${tok.guarantee_ref}: agent reports the tenancy start should be ${dmy(proposed)}${note ? ` (note: ${note})` : ""}. Not applied automatically because this application is withdrawn or refunded; review manually.`,
-          actor: "Agent", visibility: "internal",
-        });
-        return json({ ok: true, applied: false });
-      }
-
-      // Audit that the agent used the link, with their note; the amend itself is the
-      // single business tenancy_amended entry written by the shared helper below.
-      await service.from("activity_log").insert({
-        application_id: tok.application_id,
-        kind: "tenancy_correction_reported",
-        message: `${tok.guarantee_ref}: agent corrected the tenancy start to ${dmy(proposed)} from the deed email link${note ? ` (note: ${note})` : ""}.`,
-        actor: "Agent", visibility: "internal",
-      });
-
-      // Commit the date, then cancel the existing agreement and reissue.
-      const { error: updErr } = await service.from("applications").update({ tenancy_start: proposed }).eq("id", app.id);
-      if (updErr) return json({ ok: false, error: "Could not apply the correction. Please reply to the deed email." }, 200);
-
-      const dateChange = `from ${dmy(oldStart)} to ${dmy(proposed)}`;
-      const out = await reissueDeedForAmendment(service, app, "Agent", dateChange, "the letting agent");
-      if (!out.ok) {
-        // The date stands but no replacement went out; opndoor must pick this up, so
-        // reopen the report in the needs-attention queue.
-        await service.from("tenancy_correction_tokens").update({ resolved_at: null }).eq("token", token);
-        return json({ ok: false, applied: true, reissued: false, error: "The date has been corrected, but the replacement deed could not be issued automatically. opndoor has been notified and will be in touch." }, 200);
-      }
-      return json({ ok: true, applied: true, reissued: true });
-=======
       if (!/^\d{4}-\d{2}-\d{2}$/.test(proposed)) return json({ ok: false, error: "Enter a valid date." }, 200);
       // Range check mirrors amend_tenancy_start's (2000-01-01 .. today + 5 years):
       // the service-role write below bypasses that RPC, so its guard is repeated here.
@@ -396,7 +320,6 @@ Deno.serve(async (req) => {
         .map((x) => `${x.tenant_first_name ?? ""} ${x.tenant_last_name ?? ""}`.trim())
         .filter(Boolean);
       return json({ ok: true, newStart: dmy(proposed), reissued, tenants: siblings.length, tenantNames });
->>>>>>> partner-api
     }
 
     return json({ ok: false, error: "Unknown action." }, 400);

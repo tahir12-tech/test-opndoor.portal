@@ -1,23 +1,7 @@
-<<<<<<< HEAD
-// =====================================================================
-// #3 Tenant payment receipt, sent from the Stripe checkout.session.completed
-// webhook on a successful (or reinstated) payment. Branded shell shared with the
-// portal's other emails; ALWAYS redirected to EMAIL_REVIEW_ADDRESS in this test
-// build (the real recipient appears only in the "intended for" banner).
-// Idempotency is owned by the caller: the stripe_events dedup means the payment
-// branch runs once per event, and the send is gated on the fresh Paid transition.
-// =====================================================================
-// deno-lint-ignore-file no-explicit-any
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <noreply@opndoor.co>";
-const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-// const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
-=======
 import { sendMessage } from "./mailer.ts";
 import { paymentReceiptEmail } from "./emailTemplates.ts";
 import { managedByFor, managedByLabel } from "./managedBy.ts";
 import { maySendOpndoorEmail } from "./livemodeCredentials.ts";
->>>>>>> partner-api
 
 /* THE AGENCY'S NAME, WHERE WE HAVE ONE. Matt (ag): say "Once you've signed,
    Regent's Lettings receives the signed deed" instead of "the contact on your
@@ -65,10 +49,6 @@ async function signUrlFor(service: any, ref: string): Promise<string | null> {
 
 export async function deliverPaymentReceipt(service: any, p: { appId: string; tenantEmail: string; title: string; lastName: string; propertyAddr: string; amount: string; guaranteeRef: string }): Promise<void> {
   if (!p.tenantEmail) return;
-<<<<<<< HEAD
-  const tpl = receiptTemplate({ title: p.title, lastName: p.lastName, propertyAddr: p.propertyAddr, amount: p.amount, guaranteeRef: p.guaranteeRef });
-  const res = await sendEmail({ subject: tpl.subject, html: tpl.html, to: p.tenantEmail });
-=======
 
   /* SANDBOX SENDS NO OPNDOOR EMAIL, checked HERE as well as at the call site.
      stripe-webhook already gates this on maySendOpndoorEmail, so today this
@@ -92,7 +72,6 @@ export async function deliverPaymentReceipt(service: any, p: { appId: string; te
       signUrl: await signUrlFor(service, p.guaranteeRef),
     }),
   });
->>>>>>> partner-api
   await service.from("activity_log").insert({
     application_id: p.appId,
     kind: res.ok ? "payment_receipt_sent" : "payment_receipt_failed",

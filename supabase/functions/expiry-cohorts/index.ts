@@ -141,13 +141,6 @@ Deno.serve(async (req) => {
     // All in-force guarantees expiring in the cohort month (any partner), with the
     // fields the export needs. Refunded and already-expired rows are dropped below.
     const { data: apps, error: appErr } = await service.from("applications")
-<<<<<<< HEAD
-      .select("id, guarantee_ref, tenancy_start, expiry_date, monthly_rent, payment_state, partner_id, tenant_first_name, tenant_last_name, prop_addr1, prop_addr2, prop_city, prop_postcode, branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name)")
-      .eq("status", "deed").gte("expiry_date", monthStart).lte("expiry_date", monthEnd);
-    if (appErr) {
-      return json({ ok: false, error: "Could not prepare the expiry cohort." }, 500);
-    }
-=======
       .select("id, guarantee_ref, tenancy_start, expiry_date, monthly_rent, fee_amount, share_amount, tenancy_id, payment_state, partner_id, agency_id, tenant_first_name, tenant_last_name, prop_addr1, prop_addr2, prop_city, prop_postcode, branch:branches(name), agency:agencies(name), referrer:users!referrer_id(full_name)")
       // livemode: this list is emailed to each partner's management users as a
       // cohort export. A sandbox rehearsal that reached 'deed' would appear in a
@@ -156,7 +149,6 @@ Deno.serve(async (req) => {
       // to be here.
       .eq("status", "deed").eq("livemode", true).gte("expiry_date", monthStart).lte("expiry_date", monthEnd);
     if (appErr) return json({ ok: false, error: appErr.message }, 500);
->>>>>>> partner-api
 
     /* ONE READER, THE AGENCIES THEY COVER.
        This was `users where role='management'` bucketed by partner_id, with no
@@ -297,30 +289,11 @@ Deno.serve(async (req) => {
       const csv = toCSV(rows);
       const filename = `opndoor-expiries-${cohortMonth}.csv`;
 
-<<<<<<< HEAD
-      // const dest = REVIEW_ADDRESS ? [REVIEW_ADDRESS] : recipients; // test build redirects to review
-      const dest = recipients;
-      const intended = recipients.join(", ");
-      const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f6f3fa;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f3fa;padding:28px 0;"><tr><td align="center">
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:92%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(39,29,95,0.4);">
-        <tr><td style="background:#271d5f;padding:22px 28px;"><span style="font:800 22px 'Sora',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:-0.04em;color:#fff;">opndoor</span><span style="font:600 12px 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:rgba(255,255,255,0.7);margin-left:10px;">Guarantee Referral Portal</span></td></tr>
-        ${""}
-        <tr><td style="padding:28px;font:400 15px/1.6 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#271d5f;">
-          <p style="margin:0 0 14px;">Hello,</p>
-          <p style="margin:0 0 14px;">Attached are the guarantees expiring in <b>${cohortMonth}</b> (${cohort.length}), soonest first, so you can arrange renewals or fresh referrals in good time. This cohort is sent six weeks before the month begins.</p>
-          <p style="margin:0;font-size:13px;color:#5b4d86;">You can also download expiries for any month from your dashboard.</p>
-        </td></tr>
-        <tr><td style="padding:18px 28px;background:#f8eff9;font:400 12px/1.5 'Manrope',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#5b4d86;">opndoor. Questions? Reply to this email or contact ${REPLY_TO}.</td></tr>
-        </table></td></tr></table></body></html>`;
-
-=======
       // This one attaches a base64 CSV of tenant records, so an unintended
       // recipient here is a data-protection incident rather than a stray email.
       const routed = resolveRecipients(recipients);
       const dest = routed.to;
       const intended = routed.intended.join(", ");
->>>>>>> partner-api
       if (!RESEND_API_KEY || dest.length === 0) { failed += 1; continue; }
       // Attachments already worked here, and only here. The shared sender now
       // carries them for everybody.

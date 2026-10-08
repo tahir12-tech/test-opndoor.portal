@@ -1,22 +1,6 @@
-<<<<<<< HEAD
-// =====================================================================
-// #4 Tenant executed-deed email, sent from the PandaDoc document.completed
-// webhook alongside the agent delivery. Congratulatory register with a download
-// link to the tenant's own signed Deed of Guarantee. Branded shell shared with
-// the portal's other emails; ALWAYS redirected to EMAIL_REVIEW_ADDRESS in this
-// test build. Idempotency is owned by the caller (pandadoc_events dedup keyed on
-// docId:status means document.completed runs once).
-// =====================================================================
-// deno-lint-ignore-file no-explicit-any
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "opndoor <noreply@opndoor.co>";
-const REPLY_TO = Deno.env.get("EMAIL_REPLY_TO") ?? "hello@opndoor.co";
-// const REVIEW_ADDRESS = Deno.env.get("EMAIL_REVIEW_ADDRESS");
-=======
 import { sendMessage, bytesToBase64, type Attachment } from "./mailer.ts";
 import { executedDeedTenantEmail } from "./emailTemplates.ts";
 import { correctedFromLabel, formatTenancyStart } from "./deedEmail.ts";
->>>>>>> partner-api
 
 export async function deliverExecutedDeedToTenant(service: any, p: { appId: string; ref: string; tenantEmail: string; tenantName: string; propertyAddr: string; tenancyStart: string | null; pdfPath: string | null }): Promise<void> {
   if (!p.tenantEmail) return;

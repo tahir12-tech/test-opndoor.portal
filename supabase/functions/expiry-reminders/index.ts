@@ -146,19 +146,6 @@ Deno.serve(async (req) => {
               typeof value === "string" &&
               /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-<<<<<<< HEAD
-            const recipients = [
-              r.referrer_email,
-              ...(mgmtByPartner.get(r.partner_id) ?? [])
-            ]
-              .filter(isValidEmail)
-              .map((email) => email.trim());
-      const tpl = expiryReminderTemplate({
-        guaranteeRef: r.guarantee_ref, prop: r.prop ?? "", agency: r.agency ?? "", branch: r.branch ?? "",
-        daysUntil: r.days, expiryDmy: dmy(r.expiry_date), intendedFor: recipients.join(", ") || "the owning referrer and partner management",
-      });
-      const res = await sendEmail({ subject: tpl.subject, html: tpl.html, to: recipients.join(", ")});
-=======
             /* WHICH RAIL, NOT WHICH LIST LENGTH.
 
                This chose the partner-wide list whenever the agency ladder came
@@ -242,7 +229,6 @@ Deno.serve(async (req) => {
           expiryLabel: dmy(r.expiry_date), agency: r.agency ?? null, branch: r.branch ?? null,
         }),
       });
->>>>>>> partner-api
       if (res.ok) {
         emailed += 1;
       } else {

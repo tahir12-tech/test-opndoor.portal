@@ -345,7 +345,7 @@ Deno.serve(async (req) => {
           : "The agreed guarantee fee for this tenancy, for the opndoor Deed of Guarantee.";
 
       // Stripe test-mode Checkout Session for the guarantee fee.
-      // @ts-expect-error pinned apiVersion, older than the SDK types' latest literal
+     
       const stripe = new Stripe(STRIPE_SECRET, { httpClient: Stripe.createFetchHttpClient(), apiVersion: "2024-06-20" });
       const session = await stripe.checkout.sessions.create({
         // Bounds the window in DEFECTS.md 8. Without it a session stays payable
@@ -533,70 +533,6 @@ Deno.serve(async (req) => {
          `app.share_amount` when it is set. share_amount = 1 is a fee of
          approximately nothing.
 
-<<<<<<< HEAD
-    // Stripe test-mode Checkout Session for the guarantor fee (one month's rent).
-    const stripe = new Stripe(STRIPE_SECRET, { httpClient: Stripe.createFetchHttpClient(), apiVersion: "2024-06-20" });
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [{
-        price_data: {
-          currency: "gbp",
-          unit_amount: Math.round(rent * 100),
-          product_data: { name: `Guarantor fee - ${ref}`, description: "One month's rent, for the opndoor Deed of Guarantee." },
-        },
-        quantity: 1,
-      }],
-      metadata: { application_id: appId, guarantee_ref: ref },
-      client_reference_id: appId,
-      // Public, unauthenticated tenant pages (the tenant is not a portal user).
-      // {CHECKOUT_SESSION_ID} is substituted by Stripe and keys the confirmation.
-      success_url: `${origin}/pay/confirmed?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/pay/retry?session_id={CHECKOUT_SESSION_ID}`,
-    });
-
-    const service = createClient(SUPABASE_URL, SERVICE);
-    await service.from("applications").update({
-      stripe_checkout_session_id: session.id, payment_url: session.url, payment_state: "awaiting",
-    }).eq("id", appId);
-    await service.from("activity_log").insert({ application_id: appId, kind: "referral_created", message: "Referral created and sent to the tenant.", actor });
-
-    // #1 The payment email now points at the opndoor-hosted confirmation page
-    // (/pay?token=...), not the raw Stripe URL. The page's Pay button mints a fresh
-    // checkout session. utm_source tags the touch (initial send).
-    const { data: pageToken } = await service.rpc("mint_payment_page_token", { p_ref: ref });
-    const payUrl = pageToken ? `${origin}/pay?token=${pageToken}&utm_source=initial` : session.url!;
-
-    // Branded payment email (redirected to the review address in test mode).
-    const tpl = paymentEmailTemplate({ title: tenantTitle, lastName: tenantLast, propertyAddr, guaranteeRef: ref, amount: amountGBP, payUrl });
-    const emailRes = await sendEmail({ subject: tpl.subject, html: tpl.html, to: tenantEmail });
-    // Partner-safe business message; the test-mode redirect target stays admin-only
-    // (a separate internal entry), so no partner-facing surface exposes the review
-    // address regardless of how it renders the log.
-    await service.from("activity_log").insert({
-      application_id: appId,
-      kind: emailRes.ok ? "payment_email_sent" : "payment_email_failed",
-      message: emailRes.ok ? "Payment email sent to the tenant." : `Payment email not sent: ${emailRes.error}`,
-      actor: "System",
-      visibility: emailRes.ok ? "business" : "internal",
-    });
-    if (emailRes.ok && emailRes.to) {
-      await service.from("activity_log").insert({
-        application_id: appId,
-        kind: "payment_email_sent",
-        message: `Payment email delivered to ${emailRes.to}.`,
-        actor: "System",
-        visibility: "internal",
-      });
-    }
-
-    return json({
-      ok: true,
-      ref,
-      paymentUrl: session.url,
-      emailSent: emailRes.ok,
-      emailError: emailRes.ok ? null : "The payment email could not be sent.",
-    });
-=======
          The bounds are the only ones the model allows: a share is a slice of
          one tenancy, so a percentage is 1..100 and an amount cannot exceed the
          rent it is a share of. Out of range is refused rather than clamped --
@@ -631,7 +567,6 @@ Deno.serve(async (req) => {
     return app.referencing_mode === "opndoor_referenced"
       ? json({ ok: true, id: res.id, ref: res.ref, emailSent: res.emailSent, emailError: res.emailError })
       : json({ ok: true, ref: res.ref, paymentUrl: res.paymentUrl, emailSent: res.emailSent, emailError: res.emailError });
->>>>>>> partner-api
   } catch (e) {
     return json({ ok: false, error: "Could not create the referral. Please try again." }, 500);
   }

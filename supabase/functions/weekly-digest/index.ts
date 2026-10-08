@@ -139,13 +139,6 @@ Deno.serve(async (req) => {
     const endIso = `${weekStart}T00:00:00Z`;
     const rangeLabel = `${dmy(shiftDate(weekStart, -7))} to ${dmy(shiftDate(weekStart, -1))}`;
 
-<<<<<<< HEAD
-    const { data: rows, error: rpcErr } = await service.rpc("partner_weekly_digest", { p_start: startIso, p_end: endIso });
-    if (rpcErr) {
-      return json({ ok: false, error: "Could not prepare the weekly digest." }, 500);
-    }
-    const digest = (rows ?? []) as DigestRow[];
-=======
     /* GROUPED BY AGENCY, NOT BY PARTNER. partner_weekly_digest sums every
        agency on the house route into one row, so each of Regent's, Northgate's,
        Southbank's and Harborview's managers was emailed the four added
@@ -155,7 +148,6 @@ Deno.serve(async (req) => {
     const { data: rows, error: rpcErr } = await service.rpc("agency_weekly_digest", { p_start: startIso, p_end: endIso });
     if (rpcErr) return json({ ok: false, error: rpcErr.message }, 500);
     const byAgency = (rows ?? []) as AgencyDigestRow[];
->>>>>>> partner-api
 
     /* THE CLIMBER IS BACK, RANKED INSIDE THE READER'S OWN AGENCIES.
        partner_weekly_climbers ranked referrers within a PARTNER, which on the
@@ -206,17 +198,6 @@ Deno.serve(async (req) => {
       if (sentSet.has(reader.userId)) { skipped += 1; continue; }
       if (d.sent + d.paid + d.deeds === 0) { skipped += 1; continue; }
 
-<<<<<<< HEAD
-       const dest = recipients;
-
-      // const dest = REVIEW_ADDRESS ? [REVIEW_ADDRESS] : recipients; // test build redirects to review
-        const tpl = digestEmail({ partnerName: d.partner_name, rangeLabel, d, intended: recipients.join(", "), redirected: false });
-      if (!RESEND_API_KEY || dest.length === 0) { failed += 1; continue; }
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: EMAIL_FROM, to: dest, reply_to: REPLY_TO, subject: tpl.subject, html: tpl.html }),
-=======
       const routed = resolveRecipients(recipients);
       const dest = routed.to;
       // `redirected` was hardcoded false, so the banner three functions up was
@@ -230,7 +211,6 @@ Deno.serve(async (req) => {
         p_user: reader.userId,
         p_curr_start: startIso, p_curr_end: endIso,
         p_prev_start: `${shiftDate(weekStart, -14)}T00:00:00Z`, p_prev_end: startIso,
->>>>>>> partner-api
       });
       const climb = ((climbRows ?? []) as Array<{ climber_name: string; climber_delta: number }>)[0] ?? null;
 

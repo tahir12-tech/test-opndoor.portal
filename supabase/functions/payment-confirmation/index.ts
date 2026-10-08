@@ -68,17 +68,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!app) return json({ found: false });
 
-<<<<<<< HEAD
-    // A refund does not un-pay the fee. Reporting paid:false on a refunded
-    // application left the confirmation page polling forever for a payment that
-    // had already happened, so "paid" keeps its literal meaning and "refunded"
-    // is reported alongside it as its own terminal state.
-    const refunded = app.payment_state === "refunded";
-    const paid = app.payment_state === "paid" || (!!app.status && app.status !== "sent");
-    const amount = app.paid_amount != null ? Number(app.paid_amount) : Number(app.monthly_rent ?? 0);
-    // Still gated on the refund: a refunded application must never mint a signing link.
-    const deedReady = !refunded && app.deed_state === "awaiting_tenant" && !!app.pandadoc_document_id;
-=======
     // WAS: app.payment_state === "paid" || (app.status && app.status !== "sent")
     //
     // The second arm is what made this wrong. It reads "any status other than
@@ -123,7 +112,6 @@ Deno.serve(async (req) => {
       ? Number(app.fee_amount)
       : (app.monthly_rent != null ? Number(app.monthly_rent) : null);
     const deedReady = app.deed_state === "awaiting_tenant" && !!app.pandadoc_document_id;
->>>>>>> partner-api
     const deedSigned = app.deed_state === "executed";
     const deedError = app.deed_state === "error";
 
@@ -161,7 +149,6 @@ Deno.serve(async (req) => {
       // the row entirely rather than printing £0 at somebody who owes money.
       ...(paid || amountDue == null ? {} : { amountDue }),
       paid,
-      refunded,
       deedReady,
       deedSigned,
       deedError,
