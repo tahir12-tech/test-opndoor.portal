@@ -81,7 +81,13 @@ describe('the delivery guard a correction has to pass', () => {
      webhook asks one column. See aCorrectedDeedIsDeliveredToo.test.ts,
      which is the fuller statement of this. */
   it('the webhook asks whether THIS deed was sent, not when the last one was', () => {
-    expect(webhook).toContain('} else if (deliverable && mayEmail && app.deed_delivered_at) {');
+    /* The completion sequence moved to _shared/deedCompletion.ts on
+       2026-10-15 so deed-sweep could reconcile a lost callback through the
+       same code. The guard is unchanged; this reads it where it now lives,
+       and checks the webhook kept no copy of it. */
+    const completion = readFileSync('supabase/functions/_shared/deedCompletion.ts', 'utf8');
+    expect(completion).toContain('} else if (deliverable && mayEmail && app.deed_delivered_at) {');
+    expect(completion).not.toContain('new Date(app.deed_issued_at) > new Date(app.deed_delivered_at)');
     expect(webhook).not.toContain('new Date(app.deed_issued_at) > new Date(app.deed_delivered_at)');
   });
 
