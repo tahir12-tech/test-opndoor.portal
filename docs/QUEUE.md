@@ -13948,6 +13948,139 @@ inside.
   not being executed anywhere either.**
 
 ---
+## THE RESEND QUOTA, THE ALERT LOOP AND TWO UI ITEMS (instruction, 2026-10-15, verbatim)
+
+> Live just failed to send emails with Resend 429 daily_quota_exceeded (GR-20613 deed at 17:20, and again at 17:33). Don't change anything. Tell me: 1. Do dev and live use the same Resend API key or account? Compare the secret digests. 2. Roughly how many emails has live tried to send today, and what were they? Give me a query I can run. 3. When the quota resets or is upgraded, does anything retry the failed emails automatically, or does someone have to press Resend deed? Does that button also resend the tenant's copy? 4. Was the 17:33 retry on GR-20613 automatic or a button press? 5. What else failed to send today because of this, so I know who to follow up with? Also note as a UI fix: the long delivery error text overflows its box on the application page.
+
+### TWO UI ITEMS TO FIX
+
+- **The long delivery error text overflows its box on the application page.** Matt's
+  words. The text in question is the one the 429 produced, which embeds
+  Resend's whole JSON body: `Deed email to the agent could not be sent: Resend
+  responded 429: {"message":"You have reached your daily email sending
+  quota.",...}`. Not yet fixed.
+- **AND THE MESSAGE BESIDE IT IS FALSE, which is worse than ugly.**
+  `_shared/deedEmail.ts:283` writes "The signed deed reached the agency but a
+  copy could not be sent to X" whenever a COPY fails, with no regard for
+  whether the addressee's own send failed. On GR-20613 both failed, so that row
+  tells a reader Regent has the deed when Regent has nothing. Found while
+  answering question 5; not yet fixed.
+
+### THE ALERT LOOP IS THE CAUSE, AND IT IS NOT A VOLUME PROBLEM
+
+`report_ops_incident` does NOT throttle hourly. Its gate is new, OR quiet for
+24 hours, OR **the detail text changed**:
+
+```
+v_say := not found
+         or v_prev is distinct from left(coalesce(p_detail,''), 500)
+         or v_last < now() - interval '24 hours';
+```
+
+and `hubspot-sync` builds its detail with the attempt number inside it:
+
+```
+const where = `${ev.kind} ${app?.guarantee_ref ?? ""} (event ${ev.event_id}, attempt ${attempts})`;
+```
+
+So **every retry writes a different detail, defeats the comparison, and sends
+another email.** The sync runs every two minutes. The `ops_alerts` row insert is
+`on conflict do nothing` on an hourly bucket, so the LOG shows five rows for the
+day while the EMAILS went out every two minutes: live's own HTTP log has
+ops-alert returning 200 `sent_to: ["support@opndoor.co"]` twice at 16:02, 16:04,
+16:06, 16:08, 16:10, 16:12, then 429 from 16:14.
+
+**QUANTIFIED.** `hubspot_sync_events` carries 111 `fail:` rows for GR-20611, 111
+for GR-20612 and 66 for GR-20613: **288 failed attempts**, each one an email,
+from three applications. That is the daily quota.
+
+### WHAT THE ANSWERS WERE
+
+- **Keys differ, accounts unproven.** `RESEND_API_KEY` digest dev `0ec18ecc`,
+  live `0ed4d9a8`. Different keys, but the quota is per ACCOUNT and one account
+  holds many keys, so only the Resend dashboard settles it. **Declared: I sent
+  eleven signing invites from dev at 11:46 UTC today, and if the account is
+  shared those counted.**
+- **Nothing retries a failed email.** `delivery_failed_at` is set by
+  `record_delivery_attempt` and read only for display. No cron reads it. When
+  the quota resets, nothing happens by itself.
+- **The Resend deed button sends the agent copy ONLY.** `send-deed-to-agent`
+  imports `deliverDeedToAgent` and nothing else; the tenant's copy comes from
+  `deliverExecutedDeedToTenant`, which only the completion sequence calls. There
+  is no button anywhere that resends a tenant's signed deed, and GR-20613's
+  tenant needs one.
+- **Whether 17:33 was automatic or a press CANNOT BE READ OFF THE RECORD.** Both
+  paths write `actor: "System"` because `deliverDeedToAgent` hardcodes it, and
+  the failure message omits the `· automatic` / `· sent by X` suffix the success
+  message carries. The timing says a press (the sweep is at :20, and a PandaDoc
+  redelivery would have been deduped by the row the sweep wrote at 16:20), but
+  the system does not record it. That is a gap.
+- **GR-20613 is the only application harmed**: the referrer's copy, the
+  `lettings@` copy and the TENANT's copy all failed. The deed is issued and the
+  PDF is stored.
+- **And ops is blind**: every alert email since 16:14 failed, so nothing reaches
+  support@opndoor.co.
+
+### THE GOOD NEWS BURIED IN IT
+
+`deed_signed` on GR-20613 at **16:20:06** is the sweep's slot. The completion arm
+adopted that application's abandoned claim and issued the deed. Live's mixed
+`pandadoc-webhook` bundle cannot complete anything, so the sweep is the only
+reason GR-20613 has a deed at all. Only the emails failed.
+
+---
+
+## THE CHANNEL, THE LOOP AND THE REPLAY (instruction, 2026-10-15, verbatim)
+
+> Go ahead and record the two UI items and the alert-loop finding in docs/QUEUE.md.
+>
+> Then fix the two causes. Don't change anything on live; give me SQL to run or ask for my go to deploy.
+>
+> 1. HubSpot channel. On 14 Oct the referral sync failed with a 400 on "channel": GR-20611: "Partner referral was not one of the allowed options: [Direct, Partner Referral, Integration]"; GR-20612: "Agent referral was not one of the allowed options: [Direct, Partner Referral, Integration]". I've already applied the full_name update on live (hubspot_field_map id 5 now has all seven events). The rule: anything referred by an agent or a partner through the portal goes to HubSpot as "Partner Referral". Anything that came in through the partner API goes as "Integration". Don't add any options in HubSpot; fix it on our side. Tell me what currently gets sent as "Direct" so I can confirm it. If it's in the mapping, give me the SQL for live plus a migration in the repo. If it's code, tell me which function needs deploying.
+> 2. The alert loop. Stop a retrying failure from emailing support@opndoor.co every two minutes: the same failure should alert once and then stay quiet (e.g. take the attempt number out of the comparison, or only re-alert hourly). Smallest safe fix, tested on dev.
+> 3. The replay. List every referral whose HubSpot sync has failed or been parked since this started (including GR-20613), and update the replay SQL to cover them all, to run only after 1 and 2 are live. Tell me exactly what it will re-send.
+>
+> Show me everything, then stop for my go before anything touches live.
+
+### WHAT THE CENSUS SHOWED, AND IT CHANGES THE DIAGNOSIS
+
+Live has nine applications, on three partners:
+
+| partner | kind | house | referencing_mode | apps | channel sent |
+| --- | --- | --- | --- | --- | --- |
+| lettings-in-a-box | supplier | false | pre_referenced_screened | 5 | Partner referral |
+| opndoor-agents | agency | false | opndoor_referenced | 2 | Agent referral |
+| reference-my-tenant | supplier | false | pre_referenced_open | 2 | Partner referral |
+| opndoor-direct | house | **true** | opndoor_referenced | **0** | would be Direct |
+| referencing-partner | house | **true** | pre_referenced_open | **0** | would be Provider hand-over |
+
+- **NOTHING is sent as "Direct"**, which was Matt's question. The only two
+  house-route partners have no applications at all.
+- `opndoor-agents` is `is_house_route = FALSE` on live, which is why it yields
+  'Agent referral' and not 'Direct'. Worth knowing, because the function's first
+  arms are all about house routes and none of them fire.
+- **ALL NINE applications carry a `referral_created` activity row**, so every one
+  came through the portal and NOT ONE through the partner API. By Matt's rule all
+  nine are "Partner Referral" and nothing is "Integration" yet.
+
+**AND THE BREAK IS HUBSPOT-SIDE, NOT OURS.** GR-20602 through GR-20607 all
+synced cleanly, zero parked and zero failed, and GR-20607 sent "Partner
+referral" on 28 September and was accepted. The same value was refused on 14
+October. So somebody narrowed that property's option list in HubSpot between
+those dates. Our values were correct until the list moved under them, and the
+older applications' HubSpot records still hold values that are no longer in the
+option set.
+
+### WHY THE FIX IS NOT IN application_channel
+
+`public.application_channel` is the INTERNAL vocabulary and it is mirrored in the
+client (`src/data/channel.ts`, with its own test), read by `liveAnalytics.ts` and
+by `expiry-reminders`. Changing the strings it returns would move analytics and
+reminder behaviour to fix a HubSpot field. The translation belongs at the HubSpot
+boundary, and `application_attribution` is that boundary: `hubspot-sync/index.ts:660`
+is its only caller in the tree.
+---
+
 ---
 
 ## Standing constraints
