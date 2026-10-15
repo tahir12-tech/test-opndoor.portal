@@ -1,12 +1,29 @@
 -- =====================================================================
 -- A SIGNED DEED IS FOUND EVEN WITHOUT ITS CALLBACK.
 --
--- GR-20611 and GR-20612 were completed in PandaDoc on the evening of
--- 14 October 2026 and live never recorded either. pandadoc_events holds a
--- document.viewed for 20612 and no completion, both rows still read
--- deed_state 'awaiting_tenant' with deed_attempts 0 and no error, and
--- completions have arrived normally since. So the callbacks were lost in
--- flight, once, and nothing in the product was watching for their absence.
+-- GR-20611 and GR-20612 were completed in PandaDoc on 14 October 2026 and live
+-- recorded neither.
+--
+-- THE FIRST VERSION OF THIS HEADER SAID THE CALLBACKS WERE LOST IN FLIGHT. They
+-- were not, and the correction matters because it changes what the fix has to
+-- survive. Reading live on the 15th: both documents already held a
+-- `<document>:document.completed` row in pandadoc_events, and ops_alerts
+-- carried `pandadoc-webhook: Cannot read properties of null (reading 'ok')` in
+-- the hour GR-20611's completion arrived. downloadPdf returned null, the next
+-- line read `pdf.ok`, and the delete that releases the dedup row sits INSIDE
+-- the branch that throw stopped us reaching. PandaDoc retried, hit the primary
+-- key, and the handler answered 200. A committed claim with no work behind it.
+--
+-- So the callback DID arrive, and the thing nobody was watching for was not an
+-- absent request but an abandoned claim. It is a race rather than an accident
+-- of a deploy: PandaDoc fires document.completed before it renders the signed
+-- PDF, and both tenants signed within minutes of being sent the deed.
+--
+-- WHICH IS WHY THE CANDIDATE RULE BELOW MUST NEVER CONSULT pandadoc_events. The
+-- application row is the authority on whether the work finished; a dedup row is
+-- only evidence that somebody once started. See _shared/completionLock.ts, and
+-- the assertions in a_signed_deed_is_found_without_its_callback.test.sql that
+-- pin an abandoned claim as still a candidate.
 --
 -- The hourly deed-sweep could not help, and that is the part worth fixing.
 -- deeds_awaiting_generation asks for applications with NO document and

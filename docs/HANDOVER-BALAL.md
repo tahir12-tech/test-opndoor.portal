@@ -2856,209 +2856,259 @@ and the invitation was recorded as used.
 
 ---
 
-## 18. Two signed deeds live never recorded, 2026-10-15
+## 18. Two signed deeds live never recorded, and recovered, 2026-10-15
 
-GR-20611 and GR-20612 were signed in PandaDoc on the evening of 14 October.
-Live recorded neither. Both rows still read `status = 'paid'`,
-`deed_state = 'awaiting_tenant'`, `deed_attempts 0`, no error, and
-`pandadoc_events` holds a `document.viewed` for 20612 (17:08 UTC) and no
-completion. Completions have arrived normally since. The hourly `deed-sweep`
-ran throughout and did not touch them.
+GR-20611 and GR-20612 were signed in PandaDoc on 14 October. Live recorded
+neither, for twenty-four hours, while both tenants had paid (£600 and
+£1,488.46) and Regent was re-sending a signing link to a tenant who had already
+signed.
 
-Two separate things are wrong, and only one of them is about these two deeds.
+**Both are now recovered.** Migration `20261015000000` and `deed-sweep` version
+10 are on live, and the sweep reconciled both deeds at 13:04 UTC on 15 October:
+executed, signed PDFs stored (735,142 and 733,039 bytes), delivered to the
+agency, tenants emailed. `deeds_awaiting_completion` is at zero.
 
-### 18.0 Why it happened, and what to check on live to confirm it
+> **THIS SECTION WAS WRONG WHEN FIRST WRITTEN, and the correction is the useful
+> part.** It said the callbacks "were lost in flight" during the deploy of the
+> evening of 14 October, and prescribed deploying `pandadoc-webhook` alongside
+> `deed-sweep`. Reading live disproved the first and made the second dangerous.
+> Both are corrected below. If you remember the earlier version, discard it.
 
-**The deploy cannot have changed the logic.** `git diff partner-api..matt-fixes`
-over `supabase/functions/pandadoc-webhook/`, `_shared/pandadoc.ts`,
-`deed-sweep/` and `_shared/` is **empty**. Not one line of the completion path
-differs between what live ran before the deploy and after it. So the deploy
-cannot have changed the signature verification or any branch. The only thing it
-can have done is make the function briefly unavailable while the instance was
-swapped, which is the leading hypothesis precisely because the timing matches.
+### 18.0 What actually happened
 
-**Rejected is checkable and unlikely.** A wrong
-`PANDADOC_WEBHOOK_SHARED_KEY` rejects every event, not two, and completions
-work now. A transient rejection would still have raised
-`pandadoc_signature_rejected`.
+**The callbacks arrived.** Both documents already held a
+`<document>:document.completed` row in `pandadoc_events`, and `ops_alerts`
+carried this, in the hour GR-20611's completion landed:
 
-**Ignored is impossible.** Every failure arm in the completion branch raises an
-ops incident, deletes its dedup row and throws a 500 so PandaDoc redelivers.
-There is no path through that handler that writes nothing and answers 200.
-
-So one query separates the two remaining hypotheses. **An alert means the
-callback arrived and failed. No alert means it never arrived.**
-
-```sql
--- 1. Did anything at all complain, around the signatures? Read-only.
-select type, hour_bucket, detail
-  from public.ops_alerts
- where hour_bucket >= '2026-10-14 12:00'::timestamptz
-   and hour_bucket <  '2026-10-15 12:00'::timestamptz
- order by hour_bucket, type;
+```
+pandadoc-webhook: Cannot read properties of null (reading 'ok')
 ```
 
-Good result: **no rows** of type `pandadoc_signature_rejected`,
-`pandadoc_completed_unknown_document`, `pandadoc_livemode_mismatch`,
-`deed_pdf_unavailable`, `deed_pdf_not_stored` or `webhook_error`. That means
-nothing was received and refused, and the callbacks were lost in flight, which
-is the deploy window. Any of those types present names the real cause instead.
+`downloadPdf` returned **null**, and the next line in the completion sequence
+reads `pdf.ok`:
 
-```sql
--- 2. Exactly what live knows about the two documents. Read-only.
-select a.guarantee_ref, a.status, a.deed_state, a.deed_attempts,
-       a.pandadoc_document_id, a.deed_sent_at, a.deed_viewed_at,
-       a.deed_executed_at, a.payment_state, a.livemode,
-       (select string_agg(e.id || ' @ ' || e.received_at, ', ' order by e.received_at)
-          from public.pandadoc_events e
-         where e.id like a.pandadoc_document_id || ':%') as events
-  from public.applications a
- where a.guarantee_ref in ('GR-20611', 'GR-20612');
+```ts
+const pdf = await downloadPdf(docId, eventLivemode);
+if (!pdf.ok || !pdf.bytes) {              // <- TypeError on null
+  ...
+  await service.from("pandadoc_events").delete().eq("id", evId);   // never reached
 ```
 
-Good result for the recovery below: `payment_state` is **not** `refunded`,
-`deed_state` is `awaiting_tenant`, and `events` shows no
-`:document.completed`. If a `:document.completed` row IS there, stop: the
-completion was received, and the question is why it did not finish, which the
-first query answers.
+The delete that releases the dedup row sits **inside** the branch the throw
+stopped us reaching. So the row stayed behind as a tombstone: a committed claim
+with no work behind it. PandaDoc retried, hit the primary key, and the handler
+answered 200. Gone for good, with one alert.
 
-**Then the two places SQL cannot reach.**
+The evidence chain, all read off live:
 
-| where | what to look for |
+| fact | what it rules out |
 | --- | --- |
-| Supabase dashboard, Edge Functions, `pandadoc-webhook`, logs for 14 Oct 16:00 to 23:59 UTC | Any `401`, any `500`, and the gap or boot line around the deploy. A 401 means the signature was refused. A 500 means it arrived and the handler threw, and PandaDoc should have retried. **Nothing at all for `iREA49QqsKvRyjUNwVFrYb` at the completion time is the answer that confirms the deploy window** |
-| PandaDoc, Settings, Integrations, Webhooks, the subscription's delivery history for `iREA49QqsKvRyjUNwVFrYb` | Whether a completion delivery was ATTEMPTED, what status it got, and how many retries. A delivery that got a 503 or a timeout and exhausted its retries is the whole story. No delivery attempt at all means the subscription was not subscribed to that event, which is a configuration fault and would affect everyone |
-| PandaDoc, the same subscription's shared key | Compare its digest with the live project's `PANDADOC_WEBHOOK_SHARED_KEY`. Do not print either value: `printf %s "$KEY" \| shasum -a 256` on both and compare the first eight characters |
+| `:document.viewed` carries an `application_id` | the application lookup works for that document |
+| `:document.completed` carries `application_id = null` | the handler never reached the write that follows execution |
+| `deed_state` still `awaiting_tenant`, `executed_pdf_path` null | `apply_deed_executed` never succeeded |
+| the only `.ok` read between those two points is `pdf.ok` | leaves one line it can be |
 
-### 18.1 The fix, and what to deploy
+**It is a race, not an artefact of a deploy.** PandaDoc fires
+`document.completed` before it renders the signed PDF, which this codebase
+already knew and says in a comment. GR-20611 was sent at 13:05:41 and completed
+at 13:14:48; GR-20612 sent 17:06:12, completed 17:09:05. Any tenant who signs
+that fast can hit it. GR-20612 has no `webhook_error` at 17:00, so it failed by
+a second route with the same end state.
 
-The second thing wrong is the one that is not about these two deeds:
-**nothing in the product reconciled a completion.** `deeds_awaiting_generation`
-selects on `pandadoc_document_id is null` and `deed_state` null or `'error'`,
-so a row holding a document at `awaiting_tenant` is excluded twice over. The
-sweep answered "who was never sent a deed". Nobody ever answered "who signed
-one we never heard about", so any lost callback was permanent and invisible.
+**Our own `downloadPdf` cannot return null.** Live's can, which is how we know
+live's `pandadoc-webhook` is not ours: `origin/main` carries the commit
+*"Pandadoc logic same for testing delay if not yet downloade deed"*, and
+section 16.5 flagged that function as an unreconciled divergence. **Nobody has
+read it.** That is still the single most valuable outstanding check on this
+rail.
 
-`deed-sweep` now has a second arm. For every application still holding a
-document it believes unsigned, it asks PandaDoc for the document's real status
-and, where PandaDoc says completed, runs the webhook's own completion sequence:
-download the signed PDF, store it in the `deeds` bucket, `apply_deed_executed`,
-the `deed_signed` activity row, and delivery to the agency and the tenant. Not
-a second implementation; the webhook's completion body moved into
-`_shared/deedCompletion.ts` and both call it. `pandadoc_events` is the lock
-between them, so a callback arriving mid-sweep cannot deliver a second copy.
+### 18.0a The queries, corrected
 
-**Deploy in this order. The migration comes first.**
-
-1. The migration, `20261015000000_a_signed_deed_is_found_even_without_its_callback.sql`.
-   It adds `applications.deed_status_checked_at` (nullable, no default) and
-   `public.deeds_awaiting_completion`, granted to `service_role` only.
-2. Then the three functions, together:
-
-```
-npx supabase functions deploy deed-sweep pandadoc-webhook --project-ref <live ref> --use-api
-```
-
-`_shared/deedCompletion.ts` and `_shared/pandadoc.ts` ride along with both, so
-there is no third function to name. **`pandadoc-webhook` must go out in the
-same pass as `deed-sweep`**: the webhook now imports the shared sequence, and
-leaving the old webhook in place with the new sweep would be two
-implementations of one thing, which is the state this change exists to end.
-
-3. Nothing to change in the Supabase dashboard. No new secret. The hourly
-   `deed-sweep` cron already exists and needs no edit: the new arm runs inside
-   the same invocation.
-
-**Then look before it acts.** The sweep's dry run creates nothing, sends
-nothing and writes nothing, in BOTH arms:
-
-```
-curl -s -X POST "https://<live ref>.supabase.co/functions/v1/deed-sweep" \
-  -H "Content-Type: application/json" \
-  -H "x-reminders-secret: $REMINDERS_CRON_SECRET" \
-  -d '{"dryRun":true}' | jq .
-```
-
-Read `completion.stillOut` (documents PandaDoc still has out for signature,
-which is the healthy case) and `completion.wouldReconcile` (documents PandaDoc
-says are completed that live has not recorded). On a healthy estate
-`wouldReconcile` is empty. Right now it should name GR-20611 and GR-20612.
-
-### 18.2 Recovering GR-20611 and GR-20612
-
-**Do not write SQL to mark these executed by hand.** The deed is not a status;
-it is a signed PDF that has to be fetched from PandaDoc, stored, attached to
-the row and delivered. Hand-SQL would set the status and leave every download
-surface pointing at nothing. Use the arm that was just deployed: it is the same
-code the webhook would have run, and it creates no new PandaDoc document
-because it only ever reads the one already signed.
-
-1. Run the two queries in 18.0 and confirm neither row is refunded and neither
-   has a `:document.completed` event.
-2. Dry run, targeted at the two:
-
-```
-curl -s -X POST "https://<live ref>.supabase.co/functions/v1/deed-sweep" \
-  -H "Content-Type: application/json" \
-  -H "x-reminders-secret: $REMINDERS_CRON_SECRET" \
-  -d '{"dryRun":true,"refs":["GR-20611","GR-20612"]}' | jq .completion
-```
-
-Expected: `wouldReconcile` is `["GR-20611","GR-20612"]` in some order, with
-`unreadable` and `failed` empty. If a ref appears under `stillOut` instead,
-PandaDoc does not consider that document completed and nothing should be
-forced; take it back to PandaDoc's own document view.
-
-3. Then act, on those two only:
-
-```
-curl -s -X POST "https://<live ref>.supabase.co/functions/v1/deed-sweep" \
-  -H "Content-Type: application/json" \
-  -H "x-reminders-secret: $REMINDERS_CRON_SECRET" \
-  -d '{"refs":["GR-20611","GR-20612"]}' | jq .completion
-```
-
-Expected: `reconciled` names both. This issues both deeds, stores both signed
-PDFs, emails Regent the executed deed through the normal
-`deed_delivery_target` ladder, and emails each tenant their own copy. It also
-raises a `deed_completion_reconciled` ops alert per deed, which is deliberate:
-a repaired loss is still a loss and somebody should read it.
-
-4. Confirm:
+The earlier version of this section used `ops_alerts.type`. **The column is
+`alert_type`.** That query would have errored.
 
 ```sql
-select guarantee_ref, status, deed_state, deed_executed_at,
-       executed_pdf_path is not null as pdf_stored,
-       deed_delivered_at, deed_delivered_to, awaiting_staff_send
-  from public.applications
- where guarantee_ref in ('GR-20611', 'GR-20612');
+-- What complained, and when. Read-only.
+select alert_type, hour_bucket, left(detail, 300) as detail
+  from public.ops_alerts
+ where hour_bucket >= now() - interval '48 hours'
+ order by hour_bucket desc, alert_type;
 ```
 
-Good result: `status` is `deed`, `deed_state` is `executed`, `pdf_stored` is
-true, and `deed_delivered_at` is set with `deed_delivered_to` naming a Regent
-address. `awaiting_staff_send` true means the deed is issued but delivery could
-not resolve a recipient, which the **Send deed to agent** button on the
-application clears.
+The types that mean the deed rail is in trouble: `webhook_error`,
+`deed_pdf_unavailable`, `deed_pdf_not_stored`, `pandadoc_signature_rejected`,
+`pandadoc_completed_unknown_document`, `pandadoc_livemode_mismatch`,
+`deed_executed_after_refund`, `deed_delivery_target_unreadable`,
+`deed_awaiting_staff_send`, `deed_stamp_partial`, `deed_sweep_failed`,
+`deed_sweep_all_failed`, and the new `deed_completion_reconciled`.
 
-5. **The landlord copy is a button, not part of this.** Automatic completion
-   delivers to the agency and the tenant only. For each of the two
-   applications, open it in the portal and press **Send deed to landlord**.
-   That was true before this change and is unchanged by it; it is called out
-   because Matt asked for the landlord specifically.
+```sql
+-- Is any deed stuck right now? Read-only. Zero rows is healthy.
+select * from public.deeds_awaiting_completion(interval '10 minutes', 1000);
+```
 
-**If the sweep cannot be used for some reason**, the same work can be done one
-application at a time from the portal: the application's **Generate** path is
-not what you want (it would create a new document), but
-`pandadoc-webhook` will reprocess a redelivery if PandaDoc is asked to resend
-the completion from its own webhook history, provided no
-`:document.completed` row exists in `pandadoc_events` for that document.
-Resending from PandaDoc's delivery history is the only other route that uses
-the already-signed document.
+### 18.1 What is on live, and what is deliberately not
 
+**On live as of 15 October:**
+
+- Migration `20261015000000`, applied by hand in the SQL editor (every statement
+  is idempotent) with a row inserted into
+  `supabase_migrations.schema_migrations` so a later `db push` skips it. It adds
+  `applications.deed_status_checked_at` and `public.deeds_awaiting_completion`,
+  granted to `service_role` only. It is purely additive and redefines nothing,
+  so it cannot have reverted any of your migrations.
+- `deed-sweep` version 10, `verify_jwt` false. It carries the completion arm:
+  for every application still holding a document it believes unsigned, it asks
+  PandaDoc for the real status and, where PandaDoc says completed, runs the
+  webhook's own completion sequence from `_shared/deedCompletion.ts`.
+
+**NOT deployed, and this is a correction to the earlier version of this
+section, which said it had to go out in the same pass:**
+
+- **`pandadoc-webhook`.** Live's copy is yours, not ours, it contains a
+  `downloadPdf` that returns null, and nobody has read it. Deploying ours would
+  overwrite it with no copy kept. **Do not deploy it until 16.5's curl has been
+  run and whatever it carries is back in the repo as a commit.**
+
+**Why sweep-only is safe even though live runs a different webhook.** Both
+versions build the dedup key identically:
+
+```ts
+const evId = `${docId}:${status ?? type}`;
+await service.from("pandadoc_events").insert({ id: evId, type });
+```
+
+and both call `apply_deed_executed({p_document_id, p_pdf_path})`. So the
+`pandadoc_events` primary key is a real lock across the divergence, and the
+sweep cannot double-deliver a signature the webhook is handling. The cost is
+that two delivery implementations coexist until you reconcile the webhook.
+
+**Nothing else was needed.** No new secret: everything the completion arm reads
+was already required by the generation arm, which already sends email and
+creates PandaDoc documents. No cron edit: `deed-sweep-hourly` runs `20 * * * *`
+and posts `body := '{}'::jsonb`, so the new arm runs on the existing schedule.
+No website change: the fix touches no file under `src/` except tests.
+
+### 18.2 The runbook: recognising and recovering an abandoned claim
+
+This is the part to keep. It applies to any deed, not just these two.
+
+**The symptom.** An application sits at `status = 'paid'`,
+`deed_state = 'awaiting_tenant'` with a `pandadoc_document_id`, while PandaDoc
+shows the document completed. The agency chases; the tenant has already signed.
+
+**Why it used to be permanent.** The dedup row is written *before* the work, so
+any hard failure between the two leaves a claim with nothing behind it, and
+PandaDoc will not send the event again.
+
+**What fixes it.** `deed-sweep` now judges such a claim by its age.
+`_shared/completionLock.ts` holds the decision, and it is unit tested rather
+than asserted off the source. A claim younger than 15 minutes may have a live
+request behind it and is left alone; an older one cannot, and the sweep adopts
+it. Whether the work finished is already settled before that point, because
+`deeds_awaiting_completion` only ever returns `status = 'paid'` rows whose
+`deed_state` is not executed, voided or declined.
+
+**The recovery, in order.** `$SECRET` is `ops_secrets.reminders_cron`.
+
+1. Look first. This creates nothing, sends nothing and writes nothing, in both
+   arms:
+
+   ```
+   curl -s -X POST "https://<ref>.supabase.co/functions/v1/deed-sweep" \
+     -H "Content-Type: application/json" -H "x-reminders-secret: $SECRET" \
+     -d '{"dryRun":true}' | jq .completion
+   ```
+
+   `wouldReconcile` names deeds a real run would issue. `blockedByFreshLock`
+   names claims too young to step on. `stillOut` is the healthy case: PandaDoc
+   agrees the document is not signed. `unreadable` means the status could not be
+   read, and a failed read is never treated as "not signed".
+
+2. **Check who each one would be delivered to before you act.** On 15 October
+   both deeds were approved as "Regent deeds" and GR-20611 in fact delivered to
+   `lettings@omniapropertygroup.com`. The deed goes to whoever
+   `deed_delivery_target` resolves, which is the agency's ladder, not the one you
+   have in mind:
+
+   ```sql
+   select guarantee_ref, (select string_agg(email, ', ')
+            from public.deed_delivery_target(a.id)) as would_go_to
+     from public.applications a
+    where a.guarantee_ref in ('GR-XXXXX');
+   ```
+
+3. Then act, naming the refs so nothing else is touched:
+
+   ```
+   curl -s -X POST "https://<ref>.supabase.co/functions/v1/deed-sweep" \
+     -H "Content-Type: application/json" -H "x-reminders-secret: $SECRET" \
+     -d '{"refs":["GR-XXXXX"]}' | jq .completion
+   ```
+
+   A manual run needs `{"reconcile":true}` to act at all, unless `refs` is
+   given; the cron is always real. Expect the refs under `reconciled`.
+
+4. Confirm in the tables, not from the function's own word for it:
+
+   ```sql
+   select a.guarantee_ref, a.status, a.deed_state, a.deed_executed_at,
+          a.executed_pdf_path, a.deed_delivered_at, a.deed_delivered_to,
+          a.awaiting_staff_send,
+          (select coalesce(o.metadata->>'size','MISSING') from storage.objects o
+            where o.bucket_id = 'deeds' and o.name = a.executed_pdf_path) as pdf_bytes
+     from public.applications a
+    where a.guarantee_ref in ('GR-XXXXX');
+   ```
+
+   `pdf_bytes` matters on its own: `executed_pdf_path` being set does not prove
+   the object exists, and a path pointing at nothing is a failure this code was
+   written to avoid.
+
+5. **Press Send deed to landlord** on each application. Automatic completion
+   delivers to the agency and the tenant only. This has always been manual.
+
+6. Expect one `deed_completion_reconciled` alert per deed. Read its detail: it
+   states whether a `pandadoc_events` row already existed, which distinguishes
+   "the webhook died holding its claim" from "the callback never arrived". Both
+   deeds on 15 October reported the former.
+
+**If `awaiting_staff_send` comes back true**, the deed is issued but delivery
+resolved nobody. The **Send deed to agent** button on the application clears it.
+
+**What a reconciliation does not do.** It does not fix HubSpot. Both signings on
+15 October raised `hubspot_sync_error` with
+`Cannot create object with type: p144519077_applicants ... missing: [full_name]`,
+which was already failing for these applications before the recovery. The CRM
+still shows them unsigned. That is a separate defect.
 ### 18.3 Pointing Test at its own PandaDoc sandbox
 
 Test is creating real deeds in the live PandaDoc account (GR-20694, 20697,
 20698, 20707 on 15 October), spending credits and posting webhooks to live.
+
+**CONFIRMED FROM LIVE'S OWN ALERTS, 15 October.** This is no longer an
+inference from the ref numbers. Live raised six
+`pandadoc_completed_unknown_document` alerts between 05:00 and 10:00 UTC, each
+naming a document it does not recognise:
+
+```
+TM4yUXctViXnFACToGWayQ   BGTCF8HZ3VDJLGyUMvHd3i   5jLb9B6iMPuEFxAtHYk499
+Gaazw8dRghyVoo32HnHQvV   TLtcwtACez8TWzV8LAjdCW   gzYHFQFRBaVYiA5LYv5sua
+```
+
+`report_ops_incident` dedups one row per type per hour, so six alerts means at
+least six and possibly many more.
+
+**And it is worse than wasted credits.** Live refuses these correctly, because
+they match no application here. Test never receives the callback, because the
+subscription points at live. So **Test's own deeds are not being executed
+anywhere at all**: a tenant signs in Test, and nothing records it, in either
+project. The alert's own wording says this ("in which case that environment's
+deeds are not being executed"), and that is the case we are in.
+
+Those alerts are also the proof that **live runs OUR `pandadoc-webhook`**: that
+alert type exists only in our code, and the 18 September `origin/main` version
+raises no ops incidents at all.
 
 **The code already supports a separate sandbox and needs no change.**
 `_shared/livemodeCredentials.ts` resolves every third-party credential per
