@@ -6257,6 +6257,69 @@ write through the caller's own client, and `anon` holds EXECUTE on none of
   item A). That was read as harmless then because live refused a document it
   did not know. It is the same channel seen from the other end.
 
+
+### What I found, and what is built (2026-10-15)
+
+- **THE DEPLOY CANNOT HAVE CHANGED THE LOGIC, AND THAT NARROWS IT HARD.**
+  `git diff --stat partner-api..matt-fixes` over
+  `supabase/functions/pandadoc-webhook/`, `_shared/pandadoc.ts`,
+  `deed-sweep/` and `_shared/` returns **empty**. Not one line of the
+  completion path differs between what live ran before the deploy and after
+  it. So "rejected because the deploy changed the verifier" and "ignored
+  because the deploy changed a branch" are both ruled out by the code, not
+  just by Matt's observation that completions work now. The only thing the
+  deploy can have done is make the function briefly unavailable while the
+  instance was swapped.
+- **THERE IS NO SILENT PATH THROUGH THE HANDLER, which makes `ops_alerts` the
+  decisive diagnostic.** Every failure arm in the completion branch raises an
+  incident (`deed_pdf_unavailable`, `deed_pdf_not_stored`,
+  `pandadoc_signature_rejected`, `pandadoc_completed_unknown_document`,
+  `pandadoc_livemode_mismatch`, `webhook_error`), deletes its dedup row and
+  throws a 500 so PandaDoc redelivers. So: an alert on live around 14 Oct
+  evening means the callback ARRIVED and failed. No alert means it never
+  arrived. One query separates the two hypotheses.
+- **AND THE SWEEP COULD NOT HAVE HELPED, WHICH IS THE REAL DEFECT.**
+  `deeds_awaiting_generation` requires `pandadoc_document_id is null` AND
+  `(deed_state is null or deed_state = 'error')`. Both rows hold a document at
+  `awaiting_tenant`, so they are excluded TWICE OVER. The sweep is a
+  GENERATION sweep: it answers "who was never sent a deed". Nothing in the
+  product ever answered "who signed one we never heard about", so a lost
+  callback was permanent and invisible. That is the hole, and it is not
+  specific to these two deeds or to the deploy.
+
+**Built.** `20261015000000` adds `deeds_awaiting_completion` plus
+`applications.deed_status_checked_at`; the webhook's 282-line completion body
+moved verbatim into `_shared/deedCompletion.ts` (277 of 282 lines byte
+identical, the 5 changed being control flow: two throws and a `continue`
+became returns, so the sweep can decide its own retry); `documentStatus` was
+added to `_shared/pandadoc.ts`; `deed-sweep` grew a completion arm that asks
+PandaDoc for each open document's real status and runs the SAME sequence when
+it reads completed. `pandadoc_events` is the lock between the two paths, so a
+callback arriving mid-sweep cannot deliver a second copy.
+
+**MY OWN MISTAKE, RECORDED BECAUSE IT COST SOMETHING.** `dryRun` first gated
+the completion arm only. The cron-authed run I made on dev to measure the
+status reads therefore answered that question safely and then did the
+GENERATION arm's full job on the way past: eleven real PandaDoc documents
+created and eleven signing invites sent, every one of them redirected to
+`EMAIL_REVIEW_ADDRESS`, which on dev is Matt's own address. The rows were the
+eleven the sweep's own header documents as needing deeds, so the database is
+in a more correct state than before, but the credits were spent and the inbox
+was filled. A flag called `dryRun` that acts is worse than no flag, because
+the person using it has stopped watching. It now gates both arms, writes
+nothing (not even the checked-at stamp), and takes no lease, and
+`aSignedDeedIsFoundWithoutItsCallback.test.ts` pins all three.
+
+**The gap I am NOT claiming to have closed.** The acting branch (PandaDoc says
+completed, so run the sequence) cannot be driven end to end on dev, because
+that needs a human to sign a PandaDoc document. What is proven: the selection
+rule and the state transition it produces (22 pgTAP assertions), the status
+read and the classification against the real PandaDoc API (a cron-authed dry
+run read all five of dev's open documents and correctly reported every one
+still `document.sent`), that the delivery code is the webhook's own unchanged
+(the diff of the move), and the shape of the four lines in between (source
+assertions, the pattern `aCorrectedDeedIsDeliveredToo.test.ts` established for
+edge functions).
 ---
 
 ## URGENT: THE SCANNER IS SPENDING EVERY AUTH LINK (instruction, 2026-10-13, verbatim). TOP OF THE LIST.
