@@ -68,6 +68,46 @@ export const completionEventId = (docId: string) => `${docId}:document.completed
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function completeSignedDeed(service: any, app: CompletionApp, docId: string, eventLivemode: boolean): Promise<CompletionResult> {
   const evId = completionEventId(docId);
+  /* ANY FAILURE AFTER THE CLAIM IS TAKEN MUST RELEASE THE CLAIM, including one
+     nobody predicted. Every arm inside already releases it deliberately, but on
+     live on 14 October the sequence died on a line nobody had written a release
+     for: `pdf.ok` threw on a null, and a throw is not a branch, so none of the
+     careful cleanup ran. PandaDoc's retry then hit the primary key, was answered
+     200, and the deed was unrecoverable until the sweep learned to adopt an
+     abandoned claim.
+
+     So the guard sits out here, around all of it. It is the difference between
+     "a deed is late" and "a deed is lost". The body is a separate function
+     purely so that wrapping it did not re-indent 280 lines of hard-won failure
+     handling, and `state.executed` is how the catch knows which side of
+     apply_deed_executed it is on. */
+  const state = { executed: false };
+  try {
+    return await runCompletion(service, app, docId, eventLivemode, evId, state);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!state.executed) {
+      /* The deed was NOT issued, so the claim is a lie and has to go. Dropping
+         it lets PandaDoc's redelivery reprocess rather than be deduped into a
+         200, and lets the sweep take it if PandaDoc has given up. */
+      await service.from("pandadoc_events").delete().eq("id", evId).then(() => {}, () => {});
+      return { ok: false, retryable: true, error: `Completion of ${docId} failed before the deed was issued: ${msg}` };
+    }
+    /* THE DEED IS ISSUED, SO THE CLAIM STAYS. Past this point a re-run would
+       deliver a second copy of a deed somebody already has, which is the one
+       thing the dedup row exists to prevent. What failed is delivery or
+       bookkeeping, so it is reported rather than retried, and the application
+       reads 'executed' so the sweep will not pick it up either. */
+    await service.rpc("report_ops_incident", {
+      p_type: "deed_post_execution_failed",
+      p_detail: `Application ${app?.id} (${app?.guarantee_ref}): PandaDoc document ${docId} was executed and the deed IS issued, but the work after execution failed (${msg}). The signed deed may not have been delivered. Check the application's feed and use Send deed to agent if there is no delivery.`,
+    }).then(() => {}, () => {});
+    return { ok: true };
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function runCompletion(service: any, app: CompletionApp, docId: string, eventLivemode: boolean, evId: string, state: { executed: boolean }): Promise<CompletionResult> {
   /* THE EXECUTED DEED IS SECURED BEFORE ANYTHING IS DECLARED DONE.
 
      This used to download the PDF, ignore whether it worked, and carry on
@@ -154,6 +194,9 @@ export async function completeSignedDeed(service: any, app: CompletionApp, docId
     }).then(() => {}, () => {});
     return { ok: true, refunded: true };
   }
+  /* FROM HERE A RE-RUN WOULD DELIVER A SECOND DEED. apply_deed_executed has
+     committed, so the catch in completeSignedDeed must KEEP the claim. */
+  state.executed = true;
   if (app) {
     // The signing event. The "Deed Issued" milestone (status/timeline) is
     // driven by apply_deed_executed above; this is the distinct signed entry.

@@ -23,6 +23,7 @@
 import { titleCaseAddress, spelledDate } from "./text.ts";
 import { pandadocConfigFor, pandadocConfiguredFor, pandadocWebhookKeys } from "./livemodeCredentials.ts";
 import { timingSafeEqual } from "./partnerAuth.ts";
+import { downloadRetryVerdict } from "./pandadocRetry.ts";
 import { sendMessage } from "./mailer.ts";
 // The deed recipient is redirected to the review address in test mode, the same
 // resolver the mailer uses. It was referenced below but never imported, so the
@@ -501,15 +502,61 @@ export interface PdfResult {
    asynchronously AFTER it fires document.completed, so a download issued the
    moment the callback lands can legitimately 404 for a few seconds. That is the
    commonest reason a deed ends up executed with no stored document. */
+/**
+ * The executed PDF, waiting for PandaDoc to finish rendering it if need be.
+ *
+ * THE RETRY IS BALAL'S, AND IT IS THE RIGHT IDEA. PandaDoc fires
+ * document.completed BEFORE the signed PDF exists and answers 409 while it
+ * renders, so a single immediate fetch loses the race for no reason. His
+ * version on live waits up to twelve seconds, a second at a time, which is
+ * what this does.
+ *
+ * WHAT IS NOT HIS IS THE RETURN TYPE, and that is the whole of the 14 October
+ * incident. His returns `Uint8Array | null`; every caller in this repo expects
+ * `PdfResult`. On live the two were merged into one bundle, so our handler read
+ * `pdf.ok` on a raw byte array or a null, and a completion could not succeed by
+ * any path: null threw a TypeError before the cleanup that releases the dedup
+ * row, and bytes made `!pdf.ok` true and took the "unavailable" branch. The
+ * shape stays `PdfResult` and the waiting comes with it.
+ *
+ * AND THE KEY IS RESOLVED PER APPLICATION, which his also dropped: it read a
+ * module-level `KEY` that is not declared anywhere in the deployed file. A
+ * sandbox application must never download through the live account's key.
+ *
+ * A 409 THAT NEVER CLEARS IS STILL A FAILURE, not an exception: it comes back
+ * `{ok: false}` with the reason, and the caller releases its claim and lets
+ * PandaDoc redeliver or the sweep finish. Nothing here throws.
+ */
 export async function downloadPdf(documentId: string, livemode: boolean): Promise<PdfResult> {
   const cfg = pandadocConfigFor(livemode);
   if (!cfg.ok) return { ok: false, error: cfg.error };
-  try {
-    const res = await fetch(`${API}/documents/${documentId}/download`, { headers: { Authorization: `API-Key ${cfg.value.key}` } });
-    if (!res.ok) return { ok: false, error: `PandaDoc download ${res.status}: ${(await res.text()).slice(0, 200)}` };
-    return { ok: true, bytes: new Uint8Array(await res.arrayBuffer()) };
-  } catch (e) {
-    return { ok: false, error: `PandaDoc download failed: ${e instanceof Error ? e.message : String(e)}` };
+
+  const startedAt = Date.now();
+  let lastStatus: number | null = null;
+  let lastError = "PandaDoc never answered the download.";
+  for (;;) {
+    try {
+      const res = await fetch(`${API}/documents/${documentId}/download`, { headers: { Authorization: `API-Key ${cfg.value.key}` } });
+      if (res.ok) return { ok: true, bytes: new Uint8Array(await res.arrayBuffer()) };
+      lastStatus = res.status;
+      lastError = `PandaDoc download ${res.status}: ${(await res.text()).slice(0, 200)}`;
+    } catch (e) {
+      // null is "the fetch threw", which downloadRetryVerdict treats as a blip
+      // worth one more go rather than a verdict from PandaDoc.
+      lastStatus = null;
+      lastError = `PandaDoc download failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    const elapsed = Date.now() - startedAt;
+    const verdict = downloadRetryVerdict(lastStatus, elapsed);
+    if ("giveUp" in verdict) {
+      // Say how long we waited only when we actually waited. A 404 gives up at
+      // once, and "gave up after 12s" about an instant refusal is a lie that
+      // sends somebody looking for a slow render that never happened.
+      return elapsed >= 1000
+        ? { ok: false, error: `${lastError} (still not ready after ${Math.round(elapsed / 1000)}s of waiting)` }
+        : { ok: false, error: lastError };
+    }
+    await new Promise((r) => setTimeout(r, verdict.wait));
   }
 }
 
