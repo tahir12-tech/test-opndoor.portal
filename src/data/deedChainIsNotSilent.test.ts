@@ -418,8 +418,14 @@ describe('the signed deed is secured before anything is called done', () => {
     const to = src.indexOf('rpc("apply_deed_executed"', from);
     expect(to).toBeGreaterThan(from);
     const between = src.slice(from, to);
-    // The deed is not executed until the PDF is in hand and stored.
-    expect(between).toMatch(/if \(!pdf\.ok \|\| !pdf\.bytes\)/);
+    /* The deed is not executed until the PDF is in hand and stored, and the
+       check is NULL-SAFE as of 2026-10-15. It read `!pdf.ok` until live proved
+       why that is not enough: the helper returned null, the TypeError fired on
+       this very line, and because it fired BEFORE the branch below, the dedup
+       row was never released and GR-20611's completion was lost for good.
+       `!pdf` first is the whole difference between a retry and a permanent
+       loss. See aTombstonedCompletionIsStillRecoverable.test.ts. */
+    expect(between).toMatch(/if \(!pdf \|\| !pdf\.ok \|\| !pdf\.bytes\)/);
     expect(between).toMatch(/deed_pdf_unavailable/);
     // The upload error was discarded too, which wrote a path pointing at an
     // object that was never stored.

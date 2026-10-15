@@ -18,7 +18,7 @@
 -- agency and a tenant.
 
 begin;
-select plan(22);
+select plan(24);
 
 insert into public.partners (id, slug, name, referencing_mode, partner_rate, agent_rate, is_house_route, refers_own_stock, partner_kind)
 values ('97000000-0000-0000-0000-000000000001', 'zzz-recon', 'ZZZ Recon Estate', 'opndoor_referenced', 0.25, 0.10, true, true, 'agency');
@@ -185,6 +185,47 @@ select throws_ok(
   $$insert into public.pandadoc_events (id, type) values ('DOC-R1:document.completed', 'document.completed')$$,
   '23505', null,
   'the second path to reach a completion is refused by the primary key, so one signature is never delivered twice');
+
+-- ---------------------------------------------------------------------------
+-- A TOMBSTONE MUST NOT HIDE THE WORK.
+--
+-- GR-20611 and GR-20612 on live each carry a pandadoc_events row
+-- `<document>:document.completed` that was committed and then abandoned: the
+-- handler threw on `pdf.ok` before the branch that releases it, PandaDoc's
+-- retry was deduped into a 200, and the deed was never executed.
+--
+-- So the candidate list must be decided by the APPLICATION and never by
+-- pandadoc_events. It is today, because deeds_awaiting_completion does not
+-- mention that table at all. This asserts it, because the tempting
+-- "optimisation" is exactly the bug: joining pandadoc_events to skip rows that
+-- already look claimed would hide every abandoned claim for ever, which is the
+-- state these two deeds have been in since 14 October.
+-- ---------------------------------------------------------------------------
+insert into public.applications (
+  id, guarantee_ref, branch_id, agency_id, partner_id,
+  tenant_title, tenant_first_name, tenant_last_name, tenant_dob, tenant_email, tenant_phone,
+  prop_addr1, prop_city, prop_postcode, monthly_rent, fee_amount, tenancy_start,
+  status, sent_at, paid_at, deed_sent_at, livemode, referencing_mode, partner_rate, agent_rate,
+  pandadoc_document_id, deed_state, payment_state
+) values (
+  '97000000-0000-0000-0000-0000000000da', 'GR-RECON-da',
+  '97000000-0000-0000-0000-0000000000b1', '97000000-0000-0000-0000-00000000000a', '97000000-0000-0000-0000-000000000001',
+  'Mr', 'Recon', 'Tombstone', '1990-01-01', 'reconda@zzzrecon.test', '07700 900900',
+  '1 Recon Road', 'London', 'NW1 1RC', 1000, 692.31, current_date + 30,
+  'paid', now() - interval '5 days', now() - interval '2 days', now() - interval '2 days',
+  false, 'pre_referenced_open', 0.25, 0.10,
+  'DOC-RDA', 'awaiting_tenant', 'paid'
+);
+
+-- The abandoned claim, aged so it is unambiguously past any invocation.
+insert into public.pandadoc_events (id, type, received_at)
+values ('DOC-RDA:document.completed', 'document_state_changed', now() - interval '20 hours');
+
+select ok(exists (select 1 from public.pandadoc_events where id = 'DOC-RDA:document.completed'),
+  'the abandoned claim is there, so the next assertion is not vacuous');
+
+select ok(exists (select 1 from public.deeds_awaiting_completion(interval '10 minutes', 1000) where guarantee_ref = 'GR-RECON-da'),
+  'and the application is STILL a candidate, because a committed claim is not evidence the deed was issued');
 
 select * from finish();
 rollback;

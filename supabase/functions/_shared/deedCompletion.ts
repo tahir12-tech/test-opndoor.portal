@@ -95,13 +95,21 @@ export async function completeSignedDeed(service: any, app: CompletionApp, docId
   let path: string | null = null;
   if (app) {
     const pdf = await downloadPdf(docId, eventLivemode);
-    if (!pdf.ok || !pdf.bytes) {
+    /* `!pdf` FIRST, AND IT IS NOT DEFENSIVE PADDING. On live, 14 October 2026,
+       this line read `!pdf.ok` and the helper behind it returned null: the
+       TypeError fired here, BEFORE the branch below that releases the dedup
+       row, so GR-20611's completion became a committed claim with no work
+       behind it and PandaDoc's retry was deduped into a 200. Our own
+       downloadPdf cannot return null, but live's pandadoc-webhook bundle was
+       redeployed separately and carries a different one. A permanent loss must
+       not be one `undefined` away. */
+    if (!pdf || !pdf.ok || !pdf.bytes) {
       await service.rpc("report_ops_incident", {
         p_type: "deed_pdf_unavailable",
-        p_detail: `Application ${app.id} (${app.guarantee_ref}): the tenant signed deed ${docId} but the executed PDF could not be downloaded from PandaDoc (${pdf.error}). The deed has NOT been executed and PandaDoc will redeliver. If this repeats for more than an hour, the PDF is not being rendered and the deed must be executed by hand.`,
+        p_detail: `Application ${app.id} (${app.guarantee_ref}): the tenant signed deed ${docId} but the executed PDF could not be downloaded from PandaDoc (${pdf?.error ?? "the download helper returned no result"}). The deed has NOT been executed and PandaDoc will redeliver. If this repeats for more than an hour, the PDF is not being rendered and the deed must be executed by hand.`,
       }).then(() => {}, () => {});
       await service.from("pandadoc_events").delete().eq("id", evId).then(() => {}, () => {});
-      return { ok: false, retryable: true, error: `Executed PDF for ${docId} could not be downloaded: ${pdf.error}` };
+      return { ok: false, retryable: true, error: `Executed PDF for ${docId} could not be downloaded: ${pdf?.error ?? "the download helper returned no result"}` };
     }
     path = `${app.id}/${app.guarantee_ref}.pdf`;
     // The upload error was discarded too, which produced the same end state

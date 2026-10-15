@@ -52,6 +52,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateDeed, documentStatus } from "../_shared/pandadoc.ts";
 import { completeSignedDeed, completionEventId, COMPLETION_APP_COLUMNS } from "../_shared/deedCompletion.ts";
+import { completionLockVerdict } from "../_shared/completionLock.ts";
 import { deliverSigningInvite } from "../_shared/signingInvite.ts";
 import { timingSafeEqual } from "../_shared/partnerAuth.ts";
 
@@ -203,6 +204,7 @@ Deno.serve(async (req) => {
     const stillOut: { ref: string; status: string }[] = [];
     const unreadable: { ref: string; error: string }[] = [];
     const completionFailed: { ref: string; error: string }[] = [];
+    const blockedByFreshLock: string[] = [];
 
     const { data: openData, error: openErr } = await service.rpc("deeds_awaiting_completion", {
       p_older_than: `${completionOlderThanMin} minutes`,
@@ -242,25 +244,58 @@ Deno.serve(async (req) => {
         stillOut.push({ ref: d.guarantee_ref, status: st.status });
         continue;
       }
-      if (!reconcile) {
-        wouldReconcile.push(d.guarantee_ref);
-        continue;
-      }
-
       /* THE LOCK BETWEEN THE TWO PATHS, and the reason this is safe to run
          alongside a working webhook. Both insert the same id before doing any
          of the work, so if the callback is arriving at this moment one of the
          two is refused by the primary key and does nothing. Without this, a
-         redelivery landing mid-sweep would deliver the deed twice. */
+         redelivery landing mid-sweep would deliver the deed twice.
+
+         BUT A DUPLICATE KEY IS NOT "DONE", and reading it that way is what
+         would have made GR-20611 and GR-20612 unrecoverable for ever. Their
+         completions arrived, the dedup rows committed, `downloadPdf` returned
+         null, `pdf.ok` threw before the branch that releases the row, and
+         PandaDoc's retry was deduped into a 200. Two committed claims with no
+         work behind them. Whether the work finished is already settled by the
+         candidate query, so the only open question is the row's AGE, which
+         _shared/completionLock.ts answers and vitest tests properly. */
       const evId = completionEventId(d.pandadoc_document_id);
+      const heldAt = async () => {
+        const { data } = await service.from("pandadoc_events")
+          .select("received_at").eq("id", evId).maybeSingle();
+        return (data?.received_at as string | undefined) ?? null;
+      };
+
+      /* DECIDED THE SAME WAY IN BOTH MODES. The dry run used to answer before
+         the lock was ever consulted, so it reported GR-20611 and GR-20612 under
+         wouldReconcile while a real run would have skipped them: a safety check
+         that promises work it will not do is worse than none, because the person
+         reading it has stopped watching. */
+      if (!reconcile) {
+        const seen = await heldAt();
+        if (seen !== null && completionLockVerdict(seen, new Date().toISOString()) === "wait") {
+          blockedByFreshLock.push(d.guarantee_ref);
+        } else {
+          wouldReconcile.push(d.guarantee_ref);
+        }
+        continue;
+      }
+
+      let adoptedTombstone = false;
       const { error: lockErr } = await service.from("pandadoc_events")
         .insert({ id: evId, type: "document.completed" });
       if (lockErr) {
-        // 23505: the webhook has it, or had it. Either way not ours to do.
         if (lockErr.code !== "23505") {
           unreadable.push({ ref: d.guarantee_ref, error: `could not take the completion lock: ${lockErr.message}` });
+          continue;
         }
-        continue;
+        const seen = await heldAt();
+        if (completionLockVerdict(seen, new Date().toISOString()) === "wait") {
+          // Young enough to have a live request behind it. Back off; the sweep
+          // will be here again in an hour.
+          blockedByFreshLock.push(d.guarantee_ref);
+          continue;
+        }
+        adoptedTombstone = true;
       }
 
       const { data: app, error: appErr } = await service.from("applications")
@@ -291,7 +326,9 @@ Deno.serve(async (req) => {
          Deduped hourly by type, like every other incident. */
       await service.rpc("report_ops_incident", {
         p_type: "deed_completion_reconciled",
-        p_detail: `${d.guarantee_ref} (${d.application_id}) was completed in PandaDoc but never recorded: document ${d.pandadoc_document_id} read as completed and the deed has now been executed and delivered by the sweep. PandaDoc's callback for it did not arrive or did not succeed. Check the pandadoc-webhook logs and PandaDoc's webhook delivery history around the signature time, and confirm PANDADOC_WEBHOOK_SHARED_KEY still matches the subscription.`,
+        p_detail: `${d.guarantee_ref} (${d.application_id}) was completed in PandaDoc but never recorded: document ${d.pandadoc_document_id} read as completed and the deed has now been executed and delivered by the sweep. ${adoptedTombstone
+          ? "A pandadoc_events row for this completion ALREADY EXISTED, so the callback did arrive and the handler died part-way through without releasing its claim. That is a fault in the webhook, not a lost request: check the pandadoc-webhook logs for a thrown error at the signature time, and note that a handler which dies between taking the dedup row and finishing its work loses the event permanently."
+          : "There was no pandadoc_events row for it, so the callback did not arrive at all. Check PandaDoc's webhook delivery history for this document and confirm PANDADOC_WEBHOOK_SHARED_KEY still matches the subscription."}`,
       }).then(() => {}, () => {});
     }
 
@@ -327,6 +364,10 @@ Deno.serve(async (req) => {
         open: open.length,
         reconciled,
         ...(reconcile ? {} : { wouldReconcile }),
+        // Held by a claim too young to step on. Named rather than silently
+        // folded into stillOut, because "a webhook is mid-flight" and "PandaDoc
+        // says it is not signed" are different answers.
+        blockedByFreshLock,
         stillOut,
         unreadable,
         failed: completionFailed,
