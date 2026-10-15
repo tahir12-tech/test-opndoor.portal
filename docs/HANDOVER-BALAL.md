@@ -2884,10 +2884,11 @@ carried this, in the hour GR-20611's completion landed:
 pandadoc-webhook: Cannot read properties of null (reading 'ok')
 ```
 
-`downloadPdf` returned **null**, and the next line in the completion sequence
-reads `pdf.ok`:
+`downloadPdf` returned **null**, and the next line read `pdf.ok`. This is the
+code **as live was running it**, not as the repo reads now:
 
 ```ts
+// live, 14 October. OUR handler. Ours now reads `if (!pdf || !pdf.ok ...)`.
 const pdf = await downloadPdf(docId, eventLivemode);
 if (!pdf.ok || !pdf.bytes) {              // <- TypeError on null
   ...
@@ -2911,16 +2912,45 @@ The evidence chain, all read off live:
 **It is a race, not an artefact of a deploy.** PandaDoc fires
 `document.completed` before it renders the signed PDF, which this codebase
 already knew and says in a comment. GR-20611 was sent at 13:05:41 and completed
-at 13:14:48; GR-20612 sent 17:06:12, completed 17:09:05. Any tenant who signs
-that fast can hit it. GR-20612 has no `webhook_error` at 17:00, so it failed by
-a second route with the same end state.
+at 13:14:48; GR-20612 sent 17:06:12, completed 17:09:05.
 
-**Our own `downloadPdf` cannot return null.** Live's can, which is how we know
-live's `pandadoc-webhook` is not ours: `origin/main` carries the commit
-*"Pandadoc logic same for testing delay if not yet downloade deed"*, and
-section 16.5 flagged that function as an unreconciled divergence. **Nobody has
-read it.** That is still the single most valuable outstanding check on this
-rail.
+**The exposure is universal, not limited to fast signers.** The race is between
+PandaDoc firing the callback and PandaDoc finishing the render, a window of
+seconds that every completion enters no matter how long the tenant took to sign.
+Your retry loop waits 14 seconds and then returns null, so any render slower
+than that loses the deed. GR-20612 has no `webhook_error` at 17:00, so it failed
+by a second route with the same end state.
+
+**AND HERE IS THE PART THAT MATTERS MOST, because it is not what it first
+looks like.** Our `downloadPdf` cannot return null: every path returns
+`{ok, bytes, error}`. Yours can, and does. On `origin/main`:
+
+```ts
+export async function downloadPdf(documentId: string): Promise<Uint8Array | null> {
+  const maxDelayMs = 14000;      // the "testing delay if not yet downloade deed" retry
+```
+
+So the two are not interchangeable: ours returns an object, yours returns raw
+bytes or null. And your HANDLER is written for your helper, guarding
+`if (pdf && app)`, which skips a null silently and raises nothing.
+
+**The failure needs OUR handler on top of YOUR helper, and nothing else
+produces it.** Only our handler raises `webhook_error` with the
+`pandadoc-webhook: <msg>` detail format, so the alert proves our handler was
+running; only your helper can hand it a null, so the null proves your helper
+was in the same bundle. Our handler reading `pdf.ok` on your null gives exactly
+`Cannot read properties of null (reading 'ok')`.
+
+That is a **mixed tree**, which is consistent with `origin/main`'s own commits
+*"Fixed conflit deed email in exexcudted file"* and *"Deed email conflix fixed"*:
+a merge that took our handler and kept your `_shared/pandadoc.ts`.
+
+**So section 16.5's curl now has a precise thing to look for.** Fetch the
+deployed `pandadoc-webhook` bundle and read `_shared/pandadoc.ts`: if
+`downloadPdf` is declared `Promise<Uint8Array | null>` the mix is still there
+and the next fast signer loses their deed; if it returns `PdfResult`, the bundle
+is consistent and this particular fault is already gone. **Until somebody looks,
+we do not know which.**
 
 ### 18.0a The queries, corrected
 
@@ -2935,15 +2965,33 @@ select alert_type, hour_bucket, left(detail, 300) as detail
  order by hour_bucket desc, alert_type;
 ```
 
-The types that mean the deed rail is in trouble: `webhook_error`,
-`deed_pdf_unavailable`, `deed_pdf_not_stored`, `pandadoc_signature_rejected`,
-`pandadoc_completed_unknown_document`, `pandadoc_livemode_mismatch`,
-`deed_executed_after_refund`, `deed_delivery_target_unreadable`,
-`deed_awaiting_staff_send`, `deed_stamp_partial`, `deed_sweep_failed`,
-`deed_sweep_all_failed`, and the new `deed_completion_reconciled`.
+The types that mean the deed rail is in trouble. **Completion:**
+`webhook_error`, `deed_pdf_unavailable`, `deed_pdf_not_stored`,
+`pandadoc_signature_rejected`, `pandadoc_completed_unknown_document`,
+`pandadoc_livemode_mismatch`, `deed_executed_after_refund`,
+`deed_delivery_target_unreadable`, `deed_awaiting_staff_send`,
+`deed_stamp_partial`, `deed_sweep_failed`, `deed_sweep_all_failed`, and the new
+`deed_completion_reconciled`.
+
+**Generation and delivery, which the completion list above does not cover and
+which you will want far more often:** `deed_generation_failed` (the "deeds are
+not being generated" alert, raised from eight call sites in
+`_shared/pandadoc.ts`), `deed_claim_failed` (payment applied, no deed
+generated), `deed_no_delivery_contact`, `deed_orphan_document`,
+`deed_document_unattached`, `deed_void_failed`.
+
+**And three that reach `ops_alerts` by a different road**, so they are easy to
+miss when grepping the functions for `report_ops_incident`: `deed_error`,
+`deed_delivery_failed` and `deed_reminder_failed`. The `alert_ops_on_failure`
+trigger on `activity_log` inserts `new.kind` **as the `alert_type`**, so these
+appear in the same table with no edge function naming them.
 
 ```sql
--- Is any deed stuck right now? Read-only. Zero rows is healthy.
+-- Which open deeds would the sweep ask PandaDoc about? Read-only.
+-- CANDIDATES, NOT CASUALTIES. Every deed out for signature for more than ten
+-- minutes is in here, and on a healthy estate most of them are simply unsigned.
+-- A non-empty result is normal; zero means nothing is out for signature at all.
+-- The STUCK ones are what the dry run in 18.2 reports under wouldReconcile.
 select * from public.deeds_awaiting_completion(interval '10 minutes', 1000);
 ```
 
@@ -3046,8 +3094,21 @@ it. Whether the work finished is already settled before that point, because
      -d '{"refs":["GR-XXXXX"]}' | jq .completion
    ```
 
-   A manual run needs `{"reconcile":true}` to act at all, unless `refs` is
-   given; the cron is always real. Expect the refs under `reconciled`.
+   **`dryRun: true` IS THE ONLY THING THAT MAKES STEP 1 SAFE. Nothing else.**
+   The earlier version of this line said a manual run needs
+   `{"reconcile":true}` to act, which is wrong and wrong in the dangerous
+   direction. `deed-sweep` sets
+
+   ```ts
+   const reconcile = dryRun ? false : (cronAuthed ? true : !!body.reconcile);
+   ```
+
+   and `cronAuthed` is true for anyone presenting `x-reminders-secret`, which
+   is what every curl above does. So **a secret-authed run reconciles for real
+   by default**. `{"reconcile":true}` matters only on the other door, a
+   superadmin JWT, which also demands `{"test":true}`. And `refs` has no
+   bearing on whether it acts: it only widens the candidate limit and filters
+   the lists. Drop `dryRun` and it acts. Expect the refs under `reconciled`.
 
 4. Confirm in the tables, not from the function's own word for it:
 
@@ -3055,8 +3116,11 @@ it. Whether the work finished is already settled before that point, because
    select a.guarantee_ref, a.status, a.deed_state, a.deed_executed_at,
           a.executed_pdf_path, a.deed_delivered_at, a.deed_delivered_to,
           a.awaiting_staff_send,
-          (select coalesce(o.metadata->>'size','MISSING') from storage.objects o
-            where o.bucket_id = 'deeds' and o.name = a.executed_pdf_path) as pdf_bytes
+          -- coalesce OUTSIDE the subquery, or a missing object returns NULL and
+          -- reads as "no path", which is the one case this column exists to catch.
+          coalesce((select o.metadata->>'size' from storage.objects o
+                     where o.bucket_id = 'deeds' and o.name = a.executed_pdf_path),
+                   'MISSING') as pdf_bytes
      from public.applications a
     where a.guarantee_ref in ('GR-XXXXX');
    ```
@@ -3065,8 +3129,14 @@ it. Whether the work finished is already settled before that point, because
    the object exists, and a path pointing at nothing is a failure this code was
    written to avoid.
 
-5. **Press Send deed to landlord** on each application. Automatic completion
-   delivers to the agency and the tenant only. This has always been manual.
+5. **Press Send deed to landlord** where the agency's own client needs a copy.
+   **Check the rail first.** Automatic completion delivers to whoever
+   `deed_delivery_target` resolves, which is the agency ladder on the referral
+   rail but the tenant's own nominated contact on the DIRECT rail, and that
+   contact may itself be a private landlord. On a direct-rail deed this step
+   would send a second copy of the same document. Nothing automatic has ever
+   called `send-deed-to-landlord`, so on a referral-rail deed like these two
+   the landlord has had nothing and the press is needed.
 
 6. Expect one `deed_completion_reconciled` alert per deed. Read its detail: it
    states whether a `pandadoc_events` row already existed, which distinguishes
