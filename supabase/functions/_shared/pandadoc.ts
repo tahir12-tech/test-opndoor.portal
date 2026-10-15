@@ -514,6 +514,42 @@ export async function downloadPdf(documentId: string, livemode: boolean): Promis
 }
 
 /**
+ * WHAT PANDADOC CURRENTLY THINKS, asked rather than waited for.
+ *
+ * Every other thing in this module acts and then relies on a callback to learn
+ * the result. That is one lost HTTP request away from a deed that is signed in
+ * PandaDoc and awaiting_tenant here for ever, which is what happened to
+ * GR-20611 and GR-20612 on 14 October 2026. deed-sweep uses this to close that
+ * gap: for a document we believe is out for signature, it asks PandaDoc what
+ * the document's status actually is, and reconciles if the two disagree.
+ *
+ * remindSignature has read the same endpoint since it was written, for the same
+ * reason (the state is what makes the action safe). This is that read, named and
+ * exported, so there is one place that knows the shape of the response.
+ *
+ * A FAILURE IS NOT AN ANSWER. An unreachable API, a 401 from a rotated key or a
+ * 429 must never be read as "not completed", because the caller's whole job is
+ * deciding whether to act. So the error comes back as an error and the sweep
+ * leaves the row exactly as it found it.
+ */
+export async function documentStatus(documentId: string, livemode: boolean): Promise<{ ok: true; status: string } | { ok: false; error: string }> {
+  const cfg = pandadocConfigFor(livemode);
+  if (!cfg.ok) return { ok: false, error: cfg.error };
+  try {
+    const res = await fetch(`${API}/documents/${documentId}`, { headers: headers(cfg.value.key) });
+    if (!res.ok) return { ok: false, error: `PandaDoc status ${res.status}: ${(await res.text()).slice(0, 200)}` };
+    const doc = await res.json();
+    const status = typeof doc?.status === "string" ? doc.status : "";
+    // An empty status is not a status. Treated as a failure so a malformed or
+    // changed response cannot be mistaken for "still out for signature".
+    if (!status) return { ok: false, error: "PandaDoc returned no status for the document." };
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, error: `PandaDoc status read failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
  * PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key.
  *
  * THE SECRET THAT VERIFIES IS WHAT IDENTIFIES THE MODE. There is no field in a
