@@ -573,6 +573,28 @@ Deno.serve(async (req) => {
         const pm = partnerMap.get(app.partner_id);
         if (!pm) {
           await configGap(`no active hubspot_partner_map row for partner ${app.partner_id}, so the PRIMARY partner association cannot be made`);
+        } else if (pm.associate_partner_company === false) {
+          /* THE AGENCY ROUTE, THE DIRECT RAIL AND THE HAND-OVER HAVE NO PARTNER
+             COMPANY, and that is a decision rather than a gap. Matt,
+             2026-10-15: applications on the agency route "must NOT be
+             associated to any Opndoor/placeholder partner company in HubSpot.
+             They should link only to the agency's own company and branch."
+
+             So no configGap: asking HubSpot for PARTNER:opndoor-agents and
+             alerting that it is absent was the fault, not the finding.
+
+             RECORDED, NOT SILENT. The ledger key is the same one the real
+             association writes, so the work is never reconsidered and
+             20261006130000's replay cannot pick these applications up for an
+             association they must not have. The target says which of the two
+             happened, so "why has this one no partner company" is answerable
+             from the table.
+
+             `=== false` AND NOT `!pm.associate_partner_company`: on a database
+             where 20261015130000 has not landed the column is undefined, and
+             the loose test would skip the association for EVERY partner. This
+             way an absent column means the old behaviour. */
+          await record(`assoc:${app.id}:partner`, eventId, "assoc_partner_skipped", app.id);
         } else {
           const partnerCoId = await findCompanyId(pm.partner_company_key);
           if (!partnerCoId) {

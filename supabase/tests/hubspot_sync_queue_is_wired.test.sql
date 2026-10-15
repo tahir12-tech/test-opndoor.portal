@@ -32,7 +32,7 @@
 -- assertions are for.
 
 begin;
-select plan(12);
+select plan(16);
 
 -- ---------------------------------------------------------------------------
 -- The signature the deployed function calls, and only that one.
@@ -141,6 +141,48 @@ select ok(
   not exists (select 1 from public.hubspot_field_map
                where object = 'applicant' and 'deed_signed' = any(events)),
   'and no mapping names deed_signed, which is the activity kind and never an event');
+
+-- ---------------------------------------------------------------------------
+-- THE AGENCY ROUTE HAS NO PARTNER COMPANY.
+--
+-- Live, 15 October, 16:46: "partner company PARTNER:opndoor-agents does not
+-- exist in HubSpot, so the PRIMARY partner association cannot be made". The
+-- alert was right and the remedy it implies was wrong. Matt: applications on
+-- the agency route "must NOT be associated to any Opndoor/placeholder partner
+-- company in HubSpot. They should link only to the agency's own company and
+-- branch". 20261015130000 makes that config rather than code.
+-- ---------------------------------------------------------------------------
+select has_column('public', 'hubspot_partner_map', 'associate_partner_company',
+  'whether a partner has a company in HubSpot is config, not a slug in the sync');
+
+/* A partner company is a commercial counterparty, so only a supplier has one.
+   Asserted as a PROPERTY over whatever partners this database holds, which is
+   what would have caught the live alert: no partner that is US should be
+   asking HubSpot for a company. */
+select is(
+  (select count(*)::int from public.hubspot_partner_map m
+     join public.partners p on p.id = m.partner_id
+    where m.associate_partner_company
+      and coalesce(p.partner_kind,'') <> 'supplier'),
+  0,
+  'no agency-route, direct-rail or hand-over partner asks HubSpot for a partner company');
+
+select ok(
+  (select count(*)::int from public.hubspot_partner_map m
+     join public.partners p on p.id = m.partner_id
+    where m.associate_partner_company and p.partner_kind = 'supplier') > 0,
+  'while real partners still do, which is the half that must not change');
+
+/* AND EVERY PARTNER AFTER THEM. The trigger seeds a map row on insert, so
+   without this the next house partner rediscovers the whole thing. */
+insert into public.partners (id, slug, name, referencing_mode, partner_rate, agent_rate, is_house_route, refers_own_stock, partner_kind)
+values ('9b000000-0000-0000-0000-000000000001', 'zzz-new-house', 'ZZZ New House', 'opndoor_referenced', 0.25, 0.10, true, true, 'agency');
+
+select is(
+  (select associate_partner_company from public.hubspot_partner_map
+    where partner_id = '9b000000-0000-0000-0000-000000000001'),
+  false,
+  'and a partner created after this migration is seeded with the right answer');
 
 select * from finish();
 rollback;
