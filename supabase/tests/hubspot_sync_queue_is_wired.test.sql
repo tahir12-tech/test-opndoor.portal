@@ -32,7 +32,7 @@
 -- assertions are for.
 
 begin;
-select plan(10);
+select plan(12);
 
 -- ---------------------------------------------------------------------------
 -- The signature the deployed function calls, and only that one.
@@ -110,6 +110,37 @@ select is(
     where event_id = '92000000-0000-0000-0000-0000000000ee' and target = 'dead_letter'),
   1,
   'a parked event is recorded by name, so it can be replayed rather than lost');
+
+-- ---------------------------------------------------------------------------
+-- AN APPLICANT CAN BE CREATED BY ANY EVENT.
+--
+-- Live, 15 October 2026: "Cannot create object with type:
+-- p144519077_applicants. The following required properties were missing:
+-- [full_name]", on a deed_signed event for GR-20611 and GR-20612. HubSpot
+-- enforces required properties on a CREATE and not on an update, so its own
+-- wording says the Applicant did not exist, and full_name was mapped to the
+-- referral event alone. Every event after the referral silently assumed the
+-- referral had already created the record.
+--
+-- Asserted against the MAPPING rather than against hubspot-sync, because the
+-- filter is a strict array membership test (index.ts:653) and the mapping is
+-- the whole of the decision. 20261015100000 is the correction.
+-- ---------------------------------------------------------------------------
+select is(
+  (select count(*)::int from public.hubspot_field_map
+    where object = 'applicant' and hs_property = 'full_name' and source = 'full_name'
+      and events @> array['referral','fee_paid','deed_issued']::text[]),
+  1,
+  'full_name rides the referral, the payment AND the deed, so whichever event lands first can create the applicant');
+
+/* AND THE EVENT NAME IS THE INTERNAL ONE. activity_log.kind 'deed_signed' maps
+   to the event 'deed_issued' (hubspot-sync/index.ts:72), so a mapping that
+   named 'deed_signed' would read as correct and match nothing. This is the
+   mistake the first explanation of the live failure made. */
+select ok(
+  not exists (select 1 from public.hubspot_field_map
+               where object = 'applicant' and 'deed_signed' = any(events)),
+  'and no mapping names deed_signed, which is the activity kind and never an event');
 
 select * from finish();
 rollback;
