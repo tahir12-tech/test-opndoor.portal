@@ -30,8 +30,8 @@
 // Non-production projects, which must use test keys.
 // xogpsaoyprgmxdkmcype (portal.opndoor.Live) is deliberately absent.
 const NON_PRODUCTION_REFS = new Set<string>([
-  // "nfufwcpgrhfgwtphegca", // opndoor-matt-dev
-   "updniardvylhsiavtncw", 
+  //  "nfufwcpgrhfgwtphegca", // opndoor-matt-dev
+    "updniardvylhsiavtncw" // testing project
 
 ]);
 

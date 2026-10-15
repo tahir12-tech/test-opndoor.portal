@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     }).then(() => {}, () => {});
     return new Response("Invalid signature", { status: 401 });
   }
-  const eventLivemode = verified.livemode === true;
+  const eventLivemode = verified.livemode === false;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let events: any[];
@@ -183,20 +183,26 @@ Deno.serve(async (req) => {
         let path: string | null = null;
         if (app) {
           const pdf = await downloadPdf(docId, eventLivemode);
-          if (!pdf.ok || !pdf.bytes) {
+             // PDF download fail ho to deed ko executed mark mat karo
+          if (!pdf) {
+            throw new Error(
+              `Executed PDF is not ready/downloadable for PandaDoc document ${docId}`
+            );
+          }
+          if (pdf) {
             await service.rpc("report_ops_incident", {
               p_type: "deed_pdf_unavailable",
-              p_detail: `Application ${app.id} (${app.guarantee_ref}): the tenant signed deed ${docId} but the executed PDF could not be downloaded from PandaDoc (${pdf.error}). The deed has NOT been executed and PandaDoc will redeliver. If this repeats for more than an hour, the PDF is not being rendered and the deed must be executed by hand.`,
+              p_detail: `Application ${app.id} (${app.guarantee_ref}): the tenant signed deed ${docId} but the executed PDF could not be downloaded from PandaDoc (${pdf}). The deed has NOT been executed and PandaDoc will redeliver. If this repeats for more than an hour, the PDF is not being rendered and the deed must be executed by hand.`,
             }).then(() => {}, () => {});
             await service.from("pandadoc_events").delete().eq("id", evId).then(() => {}, () => {});
-            throw new Error(`Executed PDF for ${docId} could not be downloaded: ${pdf.error}`);
+            throw new Error(`Executed PDF for ${docId} could not be downloaded: ${pdf}`);
           }
           path = `${app.id}/${app.guarantee_ref}.pdf`;
           // The upload error was discarded too, which produced the same end state
           // by a different route: a path written onto the row pointing at an
           // object that was never stored.
           const { error: upErr } = await service.storage.from("deeds")
-            .upload(path, pdf.bytes, { contentType: "application/pdf", upsert: true });
+            .upload(path, pdf, { contentType: "application/pdf", upsert: true });
           if (upErr) {
             await service.rpc("report_ops_incident", {
               p_type: "deed_pdf_not_stored",

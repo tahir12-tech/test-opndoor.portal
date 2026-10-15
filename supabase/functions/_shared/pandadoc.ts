@@ -619,35 +619,102 @@ async function failGeneration(service: any, appId: string, message: string, opsT
 /** Download the executed PDF (available once the document is completed). */
 
 
-export async function downloadPdf(documentId: string): Promise<Uint8Array | null> {
-  const maxDelayMs = 12000;
-  const startTime = Date.now();
 
-  while (Date.now() - startTime < maxDelayMs) {
+
+export async function downloadPdf(documentId: string,livemode: boolean,
+): Promise<Uint8Array | null> {
+  const startedAt = Date.now();
+  const maxDelayMs = 60000;
+  let attempt = 0;
+
+  const logContext = {
+    documentId,
+    mode: livemode ? "LIVE" : "SANDBOX",
+  };
+
+  console.log("[PandaDoc PDF] Download started", logContext);
+
+  const cfg = pandadocConfigFor(livemode);
+
+  if (!cfg.ok) {
+    console.error("[PandaDoc PDF] Configuration failed", {
+      ...logContext,
+      error: cfg.error,
+    });
+    return null;
+  }
+
+  const { key } = cfg.value;
+
+  while (Date.now() - startedAt < maxDelayMs) {
+    attempt++;
+
     try {
+      console.log("[PandaDoc PDF] Request started", {
+        ...logContext,
+        attempt,
+        elapsedMs: Date.now() - startedAt,
+      });
+
       const res = await fetch(
         `${API}/documents/${documentId}/download`,
         {
-          headers: {
-            Authorization: `API-Key ${KEY}`,
-          },
-        }
+          headers: headers(key),
+          signal: AbortSignal.timeout(10000),
+        },
       );
+
+      const elapsedMs = Date.now() - startedAt;
+
       if (res.ok) {
         const buffer = await res.arrayBuffer();
-        return new Uint8Array(buffer);
-      }
 
-      // PandaDoc is still generating the signed PDF.
-      if (res.status === 409) {
-        const elapsed = Date.now() - startTime;
-        const remaining = maxDelayMs - elapsed;
-
-        if (remaining <= 0) {
+        if (buffer.byteLength === 0) {
+          console.error("[PandaDoc PDF] Empty PDF response", {
+            ...logContext,
+            attempt,
+            status: res.status,
+            elapsedMs,
+          });
           return null;
         }
 
-        // Retry after 1 second, but stop completely after 12 seconds.
+        console.log("[PandaDoc PDF] Download successful", {
+          ...logContext,
+          attempt,
+          status: res.status,
+          bytes: buffer.byteLength,
+          elapsedMs,
+        });
+
+        return new Uint8Array(buffer);
+      }
+
+      // Read the error response to expose PandaDoc's actual error.
+      const responseBody = await res.text().catch(() => "");
+
+      console.error("[PandaDoc PDF] HTTP request failed", {
+        ...logContext,
+        attempt,
+        status: res.status,
+        statusText: res.statusText,
+        responseBody: responseBody.slice(0, 1000),
+        elapsedMs,
+      });
+
+      // PandaDoc may not have finished rendering the executed PDF.
+      if (res.status === 409) {
+        const remaining = maxDelayMs - (Date.now() - startedAt);
+
+        if (remaining <= 0) {
+          console.error("[PandaDoc PDF] Retry window exhausted", {
+            ...logContext,
+            attempts: attempt,
+            elapsedMs: Date.now() - startedAt,
+          });
+          return null;
+        }
+
         await new Promise((resolve) =>
           setTimeout(resolve, Math.min(1000, remaining))
         );
@@ -655,23 +722,46 @@ export async function downloadPdf(documentId: string): Promise<Uint8Array | null
         continue;
       }
 
+      // Authentication, permission, invalid document, etc.
       return null;
-    } catch (e) {
-      const elapsed = Date.now() - startTime;
-      const remaining = maxDelayMs - elapsed;
+    } catch (error) {
+      console.error("[PandaDoc PDF] Request exception", {
+        ...logContext,
+        attempt,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage:
+          error instanceof Error ? error.message : String(error),
+        elapsedMs: Date.now() - startedAt,
+      });
+
+      const remaining = maxDelayMs - (Date.now() - startedAt);
 
       if (remaining <= 0) {
+        console.error("[PandaDoc PDF] Maximum retry duration reached", {
+          ...logContext,
+          attempts: attempt,
+          elapsedMs: Date.now() - startedAt,
+        });
+
         return null;
       }
 
       await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(1000, remaining))
+        setTimeout(resolve, Math.min(2500, remaining))
       );
     }
   }
 
+  console.error("[PandaDoc PDF] Download timed out", {
+    ...logContext,
+    attempts: attempt,
+    elapsedMs: Date.now() - startedAt,
+  });
+
   return null;
 }
+
+
 
 
 
