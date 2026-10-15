@@ -6223,6 +6223,42 @@ write through the caller's own client, and `anon` holds EXECUTE on none of
 
 ---
 
+## TWO SIGNED DEEDS LIVE NEVER RECORDED (instruction, 2026-10-15, verbatim). TOP OF THE LIST.
+
+> Live problem. Two Regent deeds, GR-20612 (PandaDoc document iREA49QqsKvRyjUNwVFrYb) and GR-20611, show COMPLETED in PandaDoc since the evening of 14 Oct, but live never recorded it. pandadoc_events on live has only document.viewed for 20612 (17:08 UTC on 14 Oct) and no completed event, and the applications row is still deed_state awaiting_tenant, deed_attempts 0, no error. Other completed events have reached live fine this morning, so the webhook works now. Balal deployed the matt-fixes bundle to live on the evening of 14 Oct, around when these were signed. The hourly deed-sweep has run every hour since and not picked them up.
+>
+> 1. Read the PandaDoc webhook handler and the deed-sweep and work out why: was the completed event likely lost during the deploy, rejected (signature or key), or ignored? And why does the sweep not catch a document that is completed in PandaDoc while the row is awaiting_tenant? Tell me exactly which logs or settings to check on live to confirm (Supabase function logs, PandaDoc webhook history), and what to look for.
+> 2. Fix the sweep so any deed completed in PandaDoc but not recorded is picked up within the hour, whatever happened to the webhook. Test it on dev by simulating a missed webhook.
+> 3. Give me a safe way to recover GR-20611 and GR-20612 on live now, so they reach Deed Issued and the signed deeds are delivered to Regent and the landlord, without creating new PandaDoc documents.
+> 4. Separately: the Test environment is creating real deeds in our live PandaDoc account (GR-20694, 20697, 20698, 20707 today), using paid credits and sending webhooks to live. Tell me how Test should be pointed at a separate PandaDoc sandbox and what config changes that needs.
+>
+> Commit to matt-fixes, rebuild the bundle, and give me Balal's deploy steps.
+
+### What the evidence already narrows, before I read anything
+
+- **`deed_attempts 0` AND NO ERROR IS THE STRONGEST CLUE.** The row was never
+  attempted, so nothing failed on our side after receipt. Combined with
+  `pandadoc_events` holding a `document.viewed` for 20612 and no completed
+  event, the completed callback did not reach a handler that wrote anything.
+  That rules out "received and then failed" and leaves lost, rejected or
+  ignored.
+- **"OTHER COMPLETED EVENTS REACHED LIVE FINE THIS MORNING" RULES OUT THE
+  SHARED KEY.** A wrong `PANDADOC_WEBHOOK_SHARED_KEY` would reject every event,
+  not two. So a signature mismatch can only have been transient, which points
+  at the deploy window rather than at configuration.
+- **THE DEPLOY WINDOW IS THE LEADING HYPOTHESIS AND IT IS CHECKABLE.** A
+  function being replaced answers 503 or times out, and whether PandaDoc then
+  retries, and how often, decides whether the event is gone for good. Their
+  webhook history is the authority on that, not our logs.
+- **AND ITEM 4 IS A MONEY AND DATA LEAK AT ONCE.** Test creating documents in
+  the live PandaDoc account spends real credits AND posts webhooks to live,
+  which is the same cross-environment shape as the dev deed whose completed
+  callback reached live on 7 October (recorded under the walk of 2026-10-12,
+  item A). That was read as harmless then because live refused a document it
+  did not know. It is the same channel seen from the other end.
+
+---
+
 ## URGENT: THE SCANNER IS SPENDING EVERY AUTH LINK (instruction, 2026-10-13, verbatim). TOP OF THE LIST.
 
 > Urgent live issue. Every Regent invitee gets "This link is not valid. Your invitation may have expired or already been used." The links aren't expired. Regent's corporate email scanner (Microsoft Safe Links, Mimecast or similar) opens each link to scan it, and our links verify the one-time token on page load (auth.opndoor.co/auth/v1/verify?token=...&type=invite), so the token is used up before the person clicks. Evidence on live: 14 Regent invites sent 07:45 to 07:50 UTC on 13 Oct; by 07:57 UTC, 13 had last_sign_in_at set while public.users.status is still pending.
