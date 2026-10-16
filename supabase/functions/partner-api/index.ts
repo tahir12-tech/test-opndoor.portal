@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
     // it also feeds the repeated_auth_failure threshold below, which a forged
     // header would suppress permanently.
     const ip = (req.headers.get("x-forwarded-for") ?? "")
-      .split(",").map((s) => s.trim()).filter(Boolean).pop() ?? "unknown";
+      .split(",").map((s: string) => s.trim()).filter(Boolean).pop() ?? "unknown";
     // Refuse an origin that is ALREADY over its failure budget, before spending
     // a hash on it. Checked with a zero-cost read rather than a bump, so a
     // legitimate request does not consume failure budget just by arriving.
