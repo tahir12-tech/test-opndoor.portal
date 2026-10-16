@@ -212,3 +212,68 @@ describe('a failure this function cannot recover from is audible', () => {
     expect(src).toMatch(/if \(err\) throw new Error\(`ledger write/);
   });
 });
+
+/* AND THE AGENCY ROUTE ASKS HUBSPOT FOR NOTHING.
+ *
+ * Live, 15 October 16:46: "partner company PARTNER:opndoor-agents does not
+ * exist in HubSpot, so the PRIMARY partner association cannot be made", and
+ * 17:18 the same for PARTNER:reference-my-tenant. The second is a real gap, a
+ * commercial counterparty whose company has gone missing. The first is not:
+ * there is no Opndoor partner company and there should not be one.
+ *
+ * Matt, 2026-10-15: applications on the agency route "must NOT be associated to
+ * any Opndoor/placeholder partner company in HubSpot. They should link only to
+ * the agency's own company and branch (e.g. Regent). Partner associations stay
+ * as they are for real partners."
+ *
+ * The decision lives in hubspot_partner_map.associate_partner_company
+ * (20261015130000), because the sync loads that table with select("*") and so
+ * a column arrives in `pm` with no change to the loading code. The database
+ * half is pinned in hubspot_sync_queue_is_wired.test.sql; this is the half that
+ * has to be read off the source, because hubspot-sync is a Deno function.
+ */
+describe('the agency route has no partner company', () => {
+  it('skips the partner association when config says there is none', () => {
+    expect(src).toContain('} else if (pm.associate_partner_company === false) {');
+  });
+
+  /* THE WHOLE POINT: no alert. Raising one was the fault, not the finding. */
+  it('and raises no config gap for it', () => {
+    const i = src.indexOf('pm.associate_partner_company === false');
+    const j = src.indexOf('} else {', i);
+    expect(i).toBeGreaterThan(-1);
+    // The CALL, not the word: the branch's own comment explains why there is
+    // no configGap here, so a bare substring test matches its own rationale.
+    expect(src.slice(i, j)).not.toContain('await configGap(');
+  });
+
+  /* RECORDED, NOT SILENT. The same ledger key the real association writes, so
+     the work is never reconsidered and 20261006130000's replay cannot pick
+     these applications up for an association they must not have. The target
+     differs so the table says which of the two happened. */
+  it('but records the skip under the same ledger key, with its own target', () => {
+    const i = src.indexOf('pm.associate_partner_company === false');
+    const arm = src.slice(i, src.indexOf('} else {', i));
+    expect(arm).toContain('`assoc:${app.id}:partner`');
+    expect(arm).toContain('"assoc_partner_skipped"');
+  });
+
+  /* `=== false`, NOT `!pm.associate_partner_company`. On a database where the
+     migration has not landed the column is undefined, and the loose test would
+     skip the association for EVERY partner including the real ones. The strict
+     test fails safe to the old behaviour. */
+  it('and fails safe on a database without the column', () => {
+    // Anchored on `if (`, for the same reason: the comment above the branch
+    // quotes the loose form in order to rule it out.
+    expect(src).not.toMatch(/if \(!pm\.associate_partner_company/);
+    expect(src).not.toMatch(/else if \(!pm\.associate_partner_company/);
+    // And the strict comparison is the one actually present.
+    expect(src).toContain('pm.associate_partner_company === false');
+  });
+
+  /* The real gap must still be reported. If this ever passes vacuously the
+     reference-my-tenant class of fault goes quiet. */
+  it('while a real partner with a missing company still raises the gap', () => {
+    expect(src).toContain('does not exist in HubSpot, so the PRIMARY partner association cannot be made');
+  });
+});

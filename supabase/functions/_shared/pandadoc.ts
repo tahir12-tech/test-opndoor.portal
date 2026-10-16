@@ -23,12 +23,12 @@
 import { titleCaseAddress, spelledDate } from "./text.ts";
 import { pandadocConfigFor, pandadocConfiguredFor, pandadocWebhookKeys } from "./livemodeCredentials.ts";
 import { timingSafeEqual } from "./partnerAuth.ts";
+import { downloadRetryVerdict } from "./pandadocRetry.ts";
 import { sendMessage } from "./mailer.ts";
 // The deed recipient is redirected to the review address in test mode, the same
 // resolver the mailer uses. It was referenced below but never imported, so the
 // redirect that keeps a non-production deed off a real tenant never applied.
 import { resolveRecipients } from "./emailRecipients.ts";
-
 
 const API = "https://api.pandadoc.com/public/v1";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
@@ -59,7 +59,6 @@ export function pandadocConfigured(livemode: boolean): boolean {
 function headers(key: string): Record<string, string> {
   return { Authorization: `API-Key ${key}`, "Content-Type": "application/json" };
 }
-
 
 function fmtDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
@@ -100,7 +99,6 @@ function londonToday(): { dmy: string; iso: string } {
   const y = parts.find((p) => p.type === "year")!.value;
   return { dmy: `${d}/${m}/${y}`, iso: `${y}-${m}-${d}` };
 }
-
 
 export interface DeedApp {
   id: string;
@@ -163,7 +161,6 @@ function tokens(a: DeedApp, issueDate: string) {
   ];
 }
 
-
 export interface DeedResult {
   ok: boolean;
   documentId?: string;
@@ -171,7 +168,6 @@ export interface DeedResult {
   issueDateIso?: string;
   error?: string;
 }
-
 
 /** Create the deed document from the template and send it to the tenant to sign. */
 export async function createAndSend(a: DeedApp, livemode: boolean): Promise<DeedResult> {
@@ -210,7 +206,6 @@ export async function createAndSend(a: DeedApp, livemode: boolean): Promise<Deed
     const created = await createRes.json();
     const docId = created.id as string;
 
-
     // The document processes asynchronously to "document.draft" before it can be sent.
     for (let i = 0; i < 8; i++) {
       const st = await fetch(`${API}/documents/${docId}`, { headers: headers(key) });
@@ -218,7 +213,6 @@ export async function createAndSend(a: DeedApp, livemode: boolean): Promise<Deed
       if (doc.status === "document.draft") break;
       await new Promise((r) => setTimeout(r, 1500));
     }
-
 
     // Explicit opndoor-branded notification copy (the sender display name itself
     // is account-level in PandaDoc, not settable per document; see the runbook).
@@ -295,8 +289,6 @@ export async function createAndSend(a: DeedApp, livemode: boolean): Promise<Deed
   }
 }
 
-
-
 const TERMINAL_STATUSES = ["document.completed", "document.declined", "document.voided", "document.expired", "document.paid"];
 function prettyStatus(s: string): string {
   return ({
@@ -307,7 +299,6 @@ function prettyStatus(s: string): string {
     "document.paid": "paid",
   } as Record<string, string>)[s] ?? s.replace("document.", "");
 }
-
 
 export interface RemindContext {
   guarantee_ref: string;
@@ -329,7 +320,6 @@ export interface RemindResult {
   /** Raw technical detail, logged opndoor-admin-only (never shown to partners). */
   technical?: string;
 }
-
 
 /**
  * Nudge the tenant to sign again, in whatever state the document is in. The
@@ -357,7 +347,6 @@ export async function remindSignature(documentId: string, ctx: RemindContext, li
   const recipientId: string | null = rec?.recipient_id ?? rec?.id ?? null;
   const recipientEmail: string = ctx.tenant_email;
 
-
   // Preferred: PandaDoc's manual reminder (valid in SENT and VIEWED).
   if (recipientId) {
     const remRes = await fetch(`${API}/documents/${documentId}/send-reminder`, {
@@ -378,7 +367,6 @@ export async function remindSignature(documentId: string, ctx: RemindContext, li
     // fall through to the link email if the plan/endpoint rejects it
   }
 
-
   // Fallback: mint a fresh signing-session link and email it ourselves.
   const { link, detail } = await signingLink(documentId, recipientEmail, key);
   if (!link) return { ok: false, error: "Reminder could not be sent, please try again shortly.", technical: detail ?? "Could not create a PandaDoc signing session for the tenant." };
@@ -388,7 +376,6 @@ export async function remindSignature(documentId: string, ctx: RemindContext, li
   if (!em.ok) return { ok: false, error: "Reminder could not be sent, email service awaiting configuration.", technical: em.error };
   return { ok: true, method: "link" };
 }
-
 
 /** A shareable signing-session link for a recipient (valid ~7 days). */
 // async function signingLink(documentId: string, recipientEmail: string): Promise<string | null> {
@@ -425,12 +412,9 @@ async function signingLink(documentId: string, recipientEmail: string, key: stri
   }
 }
 
-
 /** Email the tenant the signing link (redirected to the review address in sandbox). */
 
-
 //redirct to user
-
 
 async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindContext): Promise<{ ok: boolean; error?: string }> {
   const res = await sendMessage({
@@ -474,18 +458,11 @@ async function emailSigningLink(tenantEmail: string, link: string, ctx: RemindCo
   return { ok: res.ok, error: res.error };
 }
 
-
 /**
  * Void (retire) an outstanding document so the tenant can no longer sign it.
  * PandaDoc has no "voided" verb via API; the supported cancel path is setting
  * status Expired (11), allowed from Sent/Viewed. An already-terminal or missing
  * document is treated as effectively gone so regeneration can proceed.
- *
- * Every call is time-bounded and retried: a hung PandaDoc request must fail fast
- * rather than burn the caller's wall clock (a refund that times out here used to
- * leave the signing link live). A non-2xx PATCH is never trusted on its own —
- * the document's real status is re-read, so `ok` means "confirmed unsignable",
- * and `signed` distinguishes the one terminal state that is not a safe outcome.
  */
 export async function voidDocument(documentId: string, livemode: boolean): Promise<{ ok: boolean; alreadyGone?: boolean; error?: string }> {
   const cfg = pandadocConfigFor(livemode);
@@ -525,7 +502,99 @@ export interface PdfResult {
    asynchronously AFTER it fires document.completed, so a download issued the
    moment the callback lands can legitimately 404 for a few seconds. That is the
    commonest reason a deed ends up executed with no stored document. */
+/**
+ * The executed PDF, waiting for PandaDoc to finish rendering it if need be.
+ *
+ * THE RETRY IS BALAL'S, AND IT IS THE RIGHT IDEA. PandaDoc fires
+ * document.completed BEFORE the signed PDF exists and answers 409 while it
+ * renders, so a single immediate fetch loses the race for no reason. His
+ * version on live waits up to twelve seconds, a second at a time, which is
+ * what this does.
+ *
+ * WHAT IS NOT HIS IS THE RETURN TYPE, and that is the whole of the 14 October
+ * incident. His returns `Uint8Array | null`; every caller in this repo expects
+ * `PdfResult`. On live the two were merged into one bundle, so our handler read
+ * `pdf.ok` on a raw byte array or a null, and a completion could not succeed by
+ * any path: null threw a TypeError before the cleanup that releases the dedup
+ * row, and bytes made `!pdf.ok` true and took the "unavailable" branch. The
+ * shape stays `PdfResult` and the waiting comes with it.
+ *
+ * AND THE KEY IS RESOLVED PER APPLICATION, which his also dropped: it read a
+ * module-level `KEY` that is not declared anywhere in the deployed file. A
+ * sandbox application must never download through the live account's key.
+ *
+ * A 409 THAT NEVER CLEARS IS STILL A FAILURE, not an exception: it comes back
+ * `{ok: false}` with the reason, and the caller releases its claim and lets
+ * PandaDoc redeliver or the sweep finish. Nothing here throws.
+ */
+export async function downloadPdf(documentId: string, livemode: boolean): Promise<PdfResult> {
+  const cfg = pandadocConfigFor(livemode);
+  if (!cfg.ok) return { ok: false, error: cfg.error };
 
+  const startedAt = Date.now();
+  let lastStatus: number | null = null;
+  let lastError = "PandaDoc never answered the download.";
+  for (;;) {
+    try {
+      const res = await fetch(`${API}/documents/${documentId}/download`, { headers: { Authorization: `API-Key ${cfg.value.key}` } });
+      if (res.ok) return { ok: true, bytes: new Uint8Array(await res.arrayBuffer()) };
+      lastStatus = res.status;
+      lastError = `PandaDoc download ${res.status}: ${(await res.text()).slice(0, 200)}`;
+    } catch (e) {
+      // null is "the fetch threw", which downloadRetryVerdict treats as a blip
+      // worth one more go rather than a verdict from PandaDoc.
+      lastStatus = null;
+      lastError = `PandaDoc download failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    const elapsed = Date.now() - startedAt;
+    const verdict = downloadRetryVerdict(lastStatus, elapsed);
+    if ("giveUp" in verdict) {
+      // Say how long we waited only when we actually waited. A 404 gives up at
+      // once, and "gave up after 12s" about an instant refusal is a lie that
+      // sends somebody looking for a slow render that never happened.
+      return elapsed >= 1000
+        ? { ok: false, error: `${lastError} (still not ready after ${Math.round(elapsed / 1000)}s of waiting)` }
+        : { ok: false, error: lastError };
+    }
+    await new Promise((r) => setTimeout(r, verdict.wait));
+  }
+}
+
+/**
+ * WHAT PANDADOC CURRENTLY THINKS, asked rather than waited for.
+ *
+ * Every other thing in this module acts and then relies on a callback to learn
+ * the result. That is one lost HTTP request away from a deed that is signed in
+ * PandaDoc and awaiting_tenant here for ever, which is what happened to
+ * GR-20611 and GR-20612 on 14 October 2026. deed-sweep uses this to close that
+ * gap: for a document we believe is out for signature, it asks PandaDoc what
+ * the document's status actually is, and reconciles if the two disagree.
+ *
+ * remindSignature has read the same endpoint since it was written, for the same
+ * reason (the state is what makes the action safe). This is that read, named and
+ * exported, so there is one place that knows the shape of the response.
+ *
+ * A FAILURE IS NOT AN ANSWER. An unreachable API, a 401 from a rotated key or a
+ * 429 must never be read as "not completed", because the caller's whole job is
+ * deciding whether to act. So the error comes back as an error and the sweep
+ * leaves the row exactly as it found it.
+ */
+export async function documentStatus(documentId: string, livemode: boolean): Promise<{ ok: true; status: string } | { ok: false; error: string }> {
+  const cfg = pandadocConfigFor(livemode);
+  if (!cfg.ok) return { ok: false, error: cfg.error };
+  try {
+    const res = await fetch(`${API}/documents/${documentId}`, { headers: headers(cfg.value.key) });
+    if (!res.ok) return { ok: false, error: `PandaDoc status ${res.status}: ${(await res.text()).slice(0, 200)}` };
+    const doc = await res.json();
+    const status = typeof doc?.status === "string" ? doc.status : "";
+    // An empty status is not a status. Treated as a failure so a malformed or
+    // changed response cannot be mistaken for "still out for signature".
+    if (!status) return { ok: false, error: "PandaDoc returned no status for the document." };
+    return { ok: true, status };
+  } catch (e) {
+    return { ok: false, error: `PandaDoc status read failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
 
 /**
  * PandaDoc signs webhooks with HMAC-SHA256 of the raw body using the shared key.
@@ -614,160 +683,6 @@ async function failGeneration(service: any, appId: string, message: string, opsT
   });
   await service.rpc("report_ops_incident", { p_type: opsType, p_detail: `Application ${appId}: ${message}` }).then(() => {}, () => {});
 }
-
-
-/** Download the executed PDF (available once the document is completed). */
-
-
-
-
-export async function downloadPdf(documentId: string,livemode: boolean,
-): Promise<Uint8Array | null> {
-  const startedAt = Date.now();
-  const maxDelayMs = 60000;
-  let attempt = 0;
-
-  const logContext = {
-    documentId,
-    mode: livemode ? "LIVE" : "SANDBOX",
-  };
-
-  console.log("[PandaDoc PDF] Download started", logContext);
-
-  const cfg = pandadocConfigFor(livemode);
-
-  if (!cfg.ok) {
-    console.error("[PandaDoc PDF] Configuration failed", {
-      ...logContext,
-      error: cfg.error,
-    });
-    return null;
-  }
-
-  const { key } = cfg.value;
-
-  while (Date.now() - startedAt < maxDelayMs) {
-    attempt++;
-
-    try {
-      console.log("[PandaDoc PDF] Request started", {
-        ...logContext,
-        attempt,
-        elapsedMs: Date.now() - startedAt,
-      });
-
-      const res = await fetch(
-        `${API}/documents/${documentId}/download`,
-        {
-          headers: headers(key),
-          signal: AbortSignal.timeout(10000),
-        },
-      );
-
-      const elapsedMs = Date.now() - startedAt;
-
-      if (res.ok) {
-        const buffer = await res.arrayBuffer();
-
-        if (buffer.byteLength === 0) {
-          console.error("[PandaDoc PDF] Empty PDF response", {
-            ...logContext,
-            attempt,
-            status: res.status,
-            elapsedMs,
-          });
-          return null;
-        }
-
-        console.log("[PandaDoc PDF] Download successful", {
-          ...logContext,
-          attempt,
-          status: res.status,
-          bytes: buffer.byteLength,
-          elapsedMs,
-        });
-
-        return new Uint8Array(buffer);
-      }
-
-      // Read the error response to expose PandaDoc's actual error.
-      const responseBody = await res.text().catch(() => "");
-
-      console.error("[PandaDoc PDF] HTTP request failed", {
-        ...logContext,
-        attempt,
-        status: res.status,
-        statusText: res.statusText,
-        responseBody: responseBody.slice(0, 1000),
-        elapsedMs,
-      });
-
-      // PandaDoc may not have finished rendering the executed PDF.
-      if (res.status === 409) {
-        const remaining = maxDelayMs - (Date.now() - startedAt);
-
-        if (remaining <= 0) {
-          console.error("[PandaDoc PDF] Retry window exhausted", {
-            ...logContext,
-            attempts: attempt,
-            elapsedMs: Date.now() - startedAt,
-          });
-          return null;
-        }
-
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(1000, remaining))
-        );
-
-        continue;
-      }
-
-      // Authentication, permission, invalid document, etc.
-      return null;
-    } catch (error) {
-      console.error("[PandaDoc PDF] Request exception", {
-        ...logContext,
-        attempt,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-        errorMessage:
-          error instanceof Error ? error.message : String(error),
-        elapsedMs: Date.now() - startedAt,
-      });
-
-      const remaining = maxDelayMs - (Date.now() - startedAt);
-
-      if (remaining <= 0) {
-        console.error("[PandaDoc PDF] Maximum retry duration reached", {
-          ...logContext,
-          attempts: attempt,
-          elapsedMs: Date.now() - startedAt,
-        });
-
-        return null;
-      }
-
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(2500, remaining))
-      );
-    }
-  }
-
-  console.error("[PandaDoc PDF] Download timed out", {
-    ...logContext,
-    attempts: attempt,
-    elapsedMs: Date.now() - startedAt,
-  });
-
-  return null;
-}
-
-
-
-
-
-
-
-
 
 /**
  * Generate and send the deed for an application (agent email resolved server
@@ -1100,6 +1015,3 @@ async function runGeneration(service: any, appId: string, reissue: boolean): Pro
   }
   return res;
 }
-
-
-

@@ -37,6 +37,15 @@ const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
 const PANDADOC = 'supabase/functions/_shared/pandadoc.ts';
 const STRIPE_HOOK = 'supabase/functions/stripe-webhook/index.ts';
 const DEED_HOOK = 'supabase/functions/pandadoc-webhook/index.ts';
+/* THE COMPLETION SEQUENCE MOVED, 2026-10-15, and these assertions followed it.
+   deed-sweep now reconciles a deed that was signed in PandaDoc and whose
+   callback was lost (GR-20611 and GR-20612 on 14 October), and it has to reach
+   the same end state as the webhook. So the webhook's completion body is now
+   _shared/deedCompletion.ts and both call it. Nothing below changed its
+   meaning: the download, the store, the execution and the delivery are the
+   same code in a different file, which the diff of the move shows and which
+   aSignedDeedIsFoundWithoutItsCallback.test.ts pins from the other side. */
+const DEED_DONE = 'supabase/functions/_shared/deedCompletion.ts';
 const MANUAL_SEND = 'supabase/functions/send-deed-to-agent/index.ts';
 
 /** The body of generateDeed, which is where every generation decision is made. */
@@ -189,9 +198,16 @@ describe('pandadoc-webhook notices when a deed does not come back', () => {
     const src = read(DEED_HOOK);
     const guard = src.indexOf('status === "document.completed" && !app');
     expect(guard, 'the unknown-document guard has gone').toBeGreaterThan(-1);
-    const download = src.indexOf('downloadPdf(docId');
-    expect(download).toBeGreaterThan(guard);
-    expect(src.slice(guard, download)).toMatch(/pandadoc_completed_unknown_document/);
+    /* THE ORDERING IS THE WHOLE ASSERTION, and the move makes it stronger
+       rather than weaker. The download now happens inside the shared
+       completion sequence, so the only way to reach it is through the call
+       below -- and the guard sits in front of that call. The webhook itself
+       can no longer fetch anything, which is the property this was written
+       for: someone else's executed deed is never pulled into this function. */
+    const call = src.indexOf('completeSignedDeed(service, app, docId');
+    expect(call).toBeGreaterThan(guard);
+    expect(src.slice(guard, call)).toMatch(/pandadoc_completed_unknown_document/);
+    expect(src).not.toMatch(/downloadPdf\(/);
   });
 
   it('writes down whether the automatic delivery actually worked', () => {
@@ -200,7 +216,7 @@ describe('pandadoc-webhook notices when a deed does not come back', () => {
        nothing ever called it: zero rows on dev carry delivery_attempted_to, so
        deliveryStateOf could return 'cannot_deliver' and 'delivered' but never
        'failed'. A refused agent email looked exactly like a delivered one. */
-    const src = read(DEED_HOOK);
+    const src = read(DEED_DONE);
     expect(src).toMatch(/const sent = await deliverDeedToAgent\(/);
     expect(src).toMatch(/record_delivery_attempt[\s\S]{0,300}p_ok: sent\.ok/);
   });
@@ -210,7 +226,7 @@ describe('pandadoc-webhook notices when a deed does not come back', () => {
        the one it refuses: stamping delivery_failed_at on a queued deed puts a
        Resend button in front of an agency for a send never attempted. The
        cannot-deliver branch queues and stays admin-facing. */
-    const src = read(DEED_HOOK);
+    const src = read(DEED_DONE);
     const elseBranch = src.slice(src.indexOf('const heldForPeople'), src.indexOf('Resend allows 2 req/sec'));
     expect(elseBranch).not.toMatch(/record_delivery_attempt/);
     expect(elseBranch).toMatch(/awaiting_staff_send: true/);
@@ -394,7 +410,7 @@ describe('the signed deed is secured before anything is called done', () => {
        send-deed-to-agent and send-deed-to-landlord mail a link to nothing,
        tenant-portal answers "not ready to download yet" for ever, and
        referencing-callback counts the application as failed. */
-    const src = read(DEED_HOOK);
+    const src = read(DEED_DONE);
     const from = src.indexOf('const pdf = await downloadPdf(docId');
     expect(from, 'the download has moved').toBeGreaterThan(-1);
     // Searched FROM the download: the name appears in this file's own header
@@ -402,15 +418,26 @@ describe('the signed deed is secured before anything is called done', () => {
     const to = src.indexOf('rpc("apply_deed_executed"', from);
     expect(to).toBeGreaterThan(from);
     const between = src.slice(from, to);
-    // The deed is not executed until the PDF is in hand and stored.
-    expect(between).toMatch(/if \(!pdf\.ok \|\| !pdf\.bytes\)/);
+    /* The deed is not executed until the PDF is in hand and stored, and the
+       check is NULL-SAFE as of 2026-10-15. It read `!pdf.ok` until live proved
+       why that is not enough: the helper returned null, the TypeError fired on
+       this very line, and because it fired BEFORE the branch below, the dedup
+       row was never released and GR-20611's completion was lost for good.
+       `!pdf` first is the whole difference between a retry and a permanent
+       loss. See aTombstonedCompletionIsStillRecoverable.test.ts. */
+    expect(between).toMatch(/if \(!pdf \|\| !pdf\.ok \|\| !pdf\.bytes\)/);
     expect(between).toMatch(/deed_pdf_unavailable/);
     // The upload error was discarded too, which wrote a path pointing at an
     // object that was never stored.
     expect(between).toMatch(/const \{ error: upErr \}/);
     expect(between).toMatch(/deed_pdf_not_stored/);
-    // Both retry: drop the dedup row, throw, let PandaDoc redeliver.
-    expect(between.match(/throw new Error/g)?.length ?? 0).toBe(2);
+    /* BOTH STILL RETRY, said the way the shared sequence says it: drop the
+       dedup row and hand back a retryable failure. The webhook turns that into
+       a throw and a 500 so PandaDoc redelivers; the sweep leaves the row alone
+       and the next hour is its redelivery. The two callers differ only there,
+       which is the one thing the move changed. */
+    expect(between.match(/retryable: true/g)?.length ?? 0).toBe(2);
+    expect(between.match(/pandadoc_events"\)\.delete\(\)/g)?.length ?? 0).toBe(2);
   });
 });
 
@@ -422,7 +449,7 @@ describe('sandbox does not fake a needs-attention queue', () => {
        parked as awaiting_staff_send, wrote "No agent contact on file" into the
        feed and raised a deed_awaiting_staff_send incident. None of it true, and
        it is the queue Balal reads at cutover to judge whether the chain works. */
-    const src = read(DEED_HOOK);
+    const src = read(DEED_DONE);
     expect(src).toMatch(/const deliverable = !targetErr && !!dest\?\.email/);
     expect(src).toMatch(/if \(targetErr\)/);
     expect(src).toMatch(/\} else if \(deliverable && mayEmail\) \{/);
@@ -437,7 +464,7 @@ describe('sandbox does not fake a needs-attention queue', () => {
     // Same class as the reads above: an unread ladder is not an empty one. It
     // cannot be retried here (the deed is executed and the dedup row committed),
     // so it parks with a true reason that the manual send clears.
-    const src = read(DEED_HOOK);
+    const src = read(DEED_DONE);
     const branch = src.slice(src.indexOf('if (targetErr) {'), src.indexOf('} else if (deliverable && mayEmail)'));
     expect(branch).toMatch(/deed_delivery_target_unreadable/);
     expect(branch).toMatch(/awaiting_staff_send: true/);

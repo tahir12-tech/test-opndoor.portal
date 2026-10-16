@@ -97,7 +97,15 @@ describe('every path that archives and reissues a deed', () => {
 });
 
 describe('the completion handler', () => {
-  const SRC = read('supabase/functions/pandadoc-webhook/index.ts');
+  /* IT MOVED, 2026-10-15. deed-sweep now reconciles a deed signed in PandaDoc
+     whose callback was lost, and it must reach the same end state as the
+     webhook, so the webhook's completion body became
+     _shared/deedCompletion.ts and both call it. The delivery guard below is
+     the same code in a different file. */
+  const SRC = read('supabase/functions/_shared/deedCompletion.ts');
+  /* AND IT MOVED WHOLE. If the webhook kept a copy, the guard would exist
+     twice and the next correction would fix one of them. */
+  const HOOK = read('supabase/functions/pandadoc-webhook/index.ts');
 
   it('asks one column, not a comparison across two', () => {
     expect(SRC).toContain('} else if (deliverable && mayEmail && app.deed_delivered_at) {');
@@ -107,6 +115,12 @@ describe('the completion handler', () => {
      someone restoring "the reissue check" without knowing why it went. */
   it('and no longer tests deed_issued_at against deed_delivered_at', () => {
     expect(SRC).not.toContain('new Date(app.deed_issued_at) > new Date(app.deed_delivered_at)');
+    expect(HOOK).not.toContain('new Date(app.deed_issued_at) > new Date(app.deed_delivered_at)');
+  });
+
+  it('and the webhook does not keep a second copy of the delivery decision', () => {
+    expect(HOOK).not.toContain('Completion replayed');
+    expect(HOOK).not.toContain('deliverDeedToAgent(');
   });
 
   /* THE HALF THAT MUST NOT MOVE. A genuine PandaDoc redelivery of the same

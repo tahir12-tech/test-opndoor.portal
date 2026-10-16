@@ -32,7 +32,7 @@
 -- assertions are for.
 
 begin;
-select plan(10);
+select plan(16);
 
 -- ---------------------------------------------------------------------------
 -- The signature the deployed function calls, and only that one.
@@ -110,6 +110,79 @@ select is(
     where event_id = '92000000-0000-0000-0000-0000000000ee' and target = 'dead_letter'),
   1,
   'a parked event is recorded by name, so it can be replayed rather than lost');
+
+-- ---------------------------------------------------------------------------
+-- AN APPLICANT CAN BE CREATED BY ANY EVENT.
+--
+-- Live, 15 October 2026: "Cannot create object with type:
+-- p144519077_applicants. The following required properties were missing:
+-- [full_name]", on a deed_signed event for GR-20611 and GR-20612. HubSpot
+-- enforces required properties on a CREATE and not on an update, so its own
+-- wording says the Applicant did not exist, and full_name was mapped to the
+-- referral event alone. Every event after the referral silently assumed the
+-- referral had already created the record.
+--
+-- Asserted against the MAPPING rather than against hubspot-sync, because the
+-- filter is a strict array membership test (index.ts:653) and the mapping is
+-- the whole of the decision. 20261015100000 is the correction.
+-- ---------------------------------------------------------------------------
+select is(
+  (select count(*)::int from public.hubspot_field_map
+    where object = 'applicant' and hs_property = 'full_name' and source = 'full_name'
+      and events @> array['referral','fee_paid','deed_issued']::text[]),
+  1,
+  'full_name rides the referral, the payment AND the deed, so whichever event lands first can create the applicant');
+
+/* AND THE EVENT NAME IS THE INTERNAL ONE. activity_log.kind 'deed_signed' maps
+   to the event 'deed_issued' (hubspot-sync/index.ts:72), so a mapping that
+   named 'deed_signed' would read as correct and match nothing. This is the
+   mistake the first explanation of the live failure made. */
+select ok(
+  not exists (select 1 from public.hubspot_field_map
+               where object = 'applicant' and 'deed_signed' = any(events)),
+  'and no mapping names deed_signed, which is the activity kind and never an event');
+
+-- ---------------------------------------------------------------------------
+-- THE AGENCY ROUTE HAS NO PARTNER COMPANY.
+--
+-- Live, 15 October, 16:46: "partner company PARTNER:opndoor-agents does not
+-- exist in HubSpot, so the PRIMARY partner association cannot be made". The
+-- alert was right and the remedy it implies was wrong. Matt: applications on
+-- the agency route "must NOT be associated to any Opndoor/placeholder partner
+-- company in HubSpot. They should link only to the agency's own company and
+-- branch". 20261015130000 makes that config rather than code.
+-- ---------------------------------------------------------------------------
+select has_column('public', 'hubspot_partner_map', 'associate_partner_company',
+  'whether a partner has a company in HubSpot is config, not a slug in the sync');
+
+/* A partner company is a commercial counterparty, so only a supplier has one.
+   Asserted as a PROPERTY over whatever partners this database holds, which is
+   what would have caught the live alert: no partner that is US should be
+   asking HubSpot for a company. */
+select is(
+  (select count(*)::int from public.hubspot_partner_map m
+     join public.partners p on p.id = m.partner_id
+    where m.associate_partner_company
+      and coalesce(p.partner_kind,'') <> 'supplier'),
+  0,
+  'no agency-route, direct-rail or hand-over partner asks HubSpot for a partner company');
+
+select ok(
+  (select count(*)::int from public.hubspot_partner_map m
+     join public.partners p on p.id = m.partner_id
+    where m.associate_partner_company and p.partner_kind = 'supplier') > 0,
+  'while real partners still do, which is the half that must not change');
+
+/* AND EVERY PARTNER AFTER THEM. The trigger seeds a map row on insert, so
+   without this the next house partner rediscovers the whole thing. */
+insert into public.partners (id, slug, name, referencing_mode, partner_rate, agent_rate, is_house_route, refers_own_stock, partner_kind)
+values ('9b000000-0000-0000-0000-000000000001', 'zzz-new-house', 'ZZZ New House', 'opndoor_referenced', 0.25, 0.10, true, true, 'agency');
+
+select is(
+  (select associate_partner_company from public.hubspot_partner_map
+    where partner_id = '9b000000-0000-0000-0000-000000000001'),
+  false,
+  'and a partner created after this migration is seeded with the right answer');
 
 select * from finish();
 rollback;

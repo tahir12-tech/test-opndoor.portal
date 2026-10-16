@@ -6223,6 +6223,105 @@ write through the caller's own client, and `anon` holds EXECUTE on none of
 
 ---
 
+## TWO SIGNED DEEDS LIVE NEVER RECORDED (instruction, 2026-10-15, verbatim). TOP OF THE LIST.
+
+> Live problem. Two Regent deeds, GR-20612 (PandaDoc document iREA49QqsKvRyjUNwVFrYb) and GR-20611, show COMPLETED in PandaDoc since the evening of 14 Oct, but live never recorded it. pandadoc_events on live has only document.viewed for 20612 (17:08 UTC on 14 Oct) and no completed event, and the applications row is still deed_state awaiting_tenant, deed_attempts 0, no error. Other completed events have reached live fine this morning, so the webhook works now. Balal deployed the matt-fixes bundle to live on the evening of 14 Oct, around when these were signed. The hourly deed-sweep has run every hour since and not picked them up.
+>
+> 1. Read the PandaDoc webhook handler and the deed-sweep and work out why: was the completed event likely lost during the deploy, rejected (signature or key), or ignored? And why does the sweep not catch a document that is completed in PandaDoc while the row is awaiting_tenant? Tell me exactly which logs or settings to check on live to confirm (Supabase function logs, PandaDoc webhook history), and what to look for.
+> 2. Fix the sweep so any deed completed in PandaDoc but not recorded is picked up within the hour, whatever happened to the webhook. Test it on dev by simulating a missed webhook.
+> 3. Give me a safe way to recover GR-20611 and GR-20612 on live now, so they reach Deed Issued and the signed deeds are delivered to Regent and the landlord, without creating new PandaDoc documents.
+> 4. Separately: the Test environment is creating real deeds in our live PandaDoc account (GR-20694, 20697, 20698, 20707 today), using paid credits and sending webhooks to live. Tell me how Test should be pointed at a separate PandaDoc sandbox and what config changes that needs.
+>
+> Commit to matt-fixes, rebuild the bundle, and give me Balal's deploy steps.
+
+### What the evidence already narrows, before I read anything
+
+- **`deed_attempts 0` AND NO ERROR IS THE STRONGEST CLUE.** The row was never
+  attempted, so nothing failed on our side after receipt. Combined with
+  `pandadoc_events` holding a `document.viewed` for 20612 and no completed
+  event, the completed callback did not reach a handler that wrote anything.
+  That rules out "received and then failed" and leaves lost, rejected or
+  ignored.
+- **"OTHER COMPLETED EVENTS REACHED LIVE FINE THIS MORNING" RULES OUT THE
+  SHARED KEY.** A wrong `PANDADOC_WEBHOOK_SHARED_KEY` would reject every event,
+  not two. So a signature mismatch can only have been transient, which points
+  at the deploy window rather than at configuration.
+- **THE DEPLOY WINDOW IS THE LEADING HYPOTHESIS AND IT IS CHECKABLE.** A
+  function being replaced answers 503 or times out, and whether PandaDoc then
+  retries, and how often, decides whether the event is gone for good. Their
+  webhook history is the authority on that, not our logs.
+- **AND ITEM 4 IS A MONEY AND DATA LEAK AT ONCE.** Test creating documents in
+  the live PandaDoc account spends real credits AND posts webhooks to live,
+  which is the same cross-environment shape as the dev deed whose completed
+  callback reached live on 7 October (recorded under the walk of 2026-10-12,
+  item A). That was read as harmless then because live refused a document it
+  did not know. It is the same channel seen from the other end.
+
+
+### What I found, and what is built (2026-10-15)
+
+- **THE DEPLOY CANNOT HAVE CHANGED THE LOGIC, AND THAT NARROWS IT HARD.**
+  `git diff --stat partner-api..matt-fixes` over
+  `supabase/functions/pandadoc-webhook/`, `_shared/pandadoc.ts`,
+  `deed-sweep/` and `_shared/` returns **empty**. Not one line of the
+  completion path differs between what live ran before the deploy and after
+  it. So "rejected because the deploy changed the verifier" and "ignored
+  because the deploy changed a branch" are both ruled out by the code, not
+  just by Matt's observation that completions work now. The only thing the
+  deploy can have done is make the function briefly unavailable while the
+  instance was swapped.
+- **THERE IS NO SILENT PATH THROUGH THE HANDLER, which makes `ops_alerts` the
+  decisive diagnostic.** Every failure arm in the completion branch raises an
+  incident (`deed_pdf_unavailable`, `deed_pdf_not_stored`,
+  `pandadoc_signature_rejected`, `pandadoc_completed_unknown_document`,
+  `pandadoc_livemode_mismatch`, `webhook_error`), deletes its dedup row and
+  throws a 500 so PandaDoc redelivers. So: an alert on live around 14 Oct
+  evening means the callback ARRIVED and failed. No alert means it never
+  arrived. One query separates the two hypotheses.
+- **AND THE SWEEP COULD NOT HAVE HELPED, WHICH IS THE REAL DEFECT.**
+  `deeds_awaiting_generation` requires `pandadoc_document_id is null` AND
+  `(deed_state is null or deed_state = 'error')`. Both rows hold a document at
+  `awaiting_tenant`, so they are excluded TWICE OVER. The sweep is a
+  GENERATION sweep: it answers "who was never sent a deed". Nothing in the
+  product ever answered "who signed one we never heard about", so a lost
+  callback was permanent and invisible. That is the hole, and it is not
+  specific to these two deeds or to the deploy.
+
+**Built.** `20261015000000` adds `deeds_awaiting_completion` plus
+`applications.deed_status_checked_at`; the webhook's 282-line completion body
+moved verbatim into `_shared/deedCompletion.ts` (277 of 282 lines byte
+identical, the 5 changed being control flow: two throws and a `continue`
+became returns, so the sweep can decide its own retry); `documentStatus` was
+added to `_shared/pandadoc.ts`; `deed-sweep` grew a completion arm that asks
+PandaDoc for each open document's real status and runs the SAME sequence when
+it reads completed. `pandadoc_events` is the lock between the two paths, so a
+callback arriving mid-sweep cannot deliver a second copy.
+
+**MY OWN MISTAKE, RECORDED BECAUSE IT COST SOMETHING.** `dryRun` first gated
+the completion arm only. The cron-authed run I made on dev to measure the
+status reads therefore answered that question safely and then did the
+GENERATION arm's full job on the way past: eleven real PandaDoc documents
+created and eleven signing invites sent, every one of them redirected to
+`EMAIL_REVIEW_ADDRESS`, which on dev is Matt's own address. The rows were the
+eleven the sweep's own header documents as needing deeds, so the database is
+in a more correct state than before, but the credits were spent and the inbox
+was filled. A flag called `dryRun` that acts is worse than no flag, because
+the person using it has stopped watching. It now gates both arms, writes
+nothing (not even the checked-at stamp), and takes no lease, and
+`aSignedDeedIsFoundWithoutItsCallback.test.ts` pins all three.
+
+**The gap I am NOT claiming to have closed.** The acting branch (PandaDoc says
+completed, so run the sequence) cannot be driven end to end on dev, because
+that needs a human to sign a PandaDoc document. What is proven: the selection
+rule and the state transition it produces (22 pgTAP assertions), the status
+read and the classification against the real PandaDoc API (a cron-authed dry
+run read all five of dev's open documents and correctly reported every one
+still `document.sent`), that the delivery code is the webhook's own unchanged
+(the diff of the move), and the shape of the four lines in between (source
+assertions, the pattern `aCorrectedDeedIsDeliveredToo.test.ts` established for
+edge functions).
+---
+
 ## URGENT: THE SCANNER IS SPENDING EVERY AUTH LINK (instruction, 2026-10-13, verbatim). TOP OF THE LIST.
 
 > Urgent live issue. Every Regent invitee gets "This link is not valid. Your invitation may have expired or already been used." The links aren't expired. Regent's corporate email scanner (Microsoft Safe Links, Mimecast or similar) opens each link to scan it, and our links verify the one-time token on page load (auth.opndoor.co/auth/v1/verify?token=...&type=invite), so the token is used up before the person clicks. Evidence on live: 14 Regent invites sent 07:45 to 07:50 UTC on 13 Oct; by 07:57 UTC, 13 had last_sign_in_at set while public.users.status is still pending.
@@ -13699,6 +13798,288 @@ row.
   (`AgencyHome.tsx`, column plus `NOTIFY_LABEL` / `NOTIFY_NOTE` shared in
   `positionsService.ts`). Team.tsx renders people as `tm-person` cards rather
   than a table and has no tickbox yet. Vitest coverage of the UI not written.
+
+## DEPLOYING THE DEED-SWEEP FIX TO LIVE, OURSELVES (instructions, 2026-10-15, verbatim)
+
+> Before I decide: can I deploy the deed-sweep fix to live (project xogpsaoyprgmxdkmcype) myself, from this laptop, instead of waiting for Balal? Don't deploy anything or change anything yet. Tell me plainly: 1. Exactly what I need: a Supabase personal access token? Which role in the organisation (Owner/Admin/Developer)? Anything else? 2. Whether the migration 20261015000000 can be applied by me pasting it into the live SQL editor, and what to insert into supabase_migrations.schema_migrations so Balal's next db push doesn't try to apply it again. 3. The risk of overwriting Balal's own changes: his repo has 7 migrations ours didn't (20260703000000 and the 20260904 ones, including alert_on_failed_deed_void and block_refunded_deed_completion), and live runs his main. How will you check the deed-sweep and pandadoc-webhook running on live against what we'd deploy, before deploying? What would make you stop? 4. Whether anything else (GitHub integration in Supabase, the website, cron, secrets) is affected or needed for this particular fix. 5. The exact step-by-step, with a dry run before the real run for GR-20611 and GR-20612. If anything about doing it myself is a bad idea, say so.
+
+> We're deploying the deed-sweep fix to live (project xogpsaoyprgmxdkmcype) ourselves, step by step. Rules for the whole job: one step at a time, stop after each and wait for me to say go. Never deploy pandadoc-webhook, never run db push, never use --prune or --no-verify-jwt, never deploy without naming the function. Change nothing on live until I say so.
+>
+> Step 1 now: give me the read-only pre-flight as SQL I paste into the live SQL editor, combined into as few result sets as possible: the 27-object check, the blast-radius count, GR-20611 and GR-20612's state and pandadoc_events, ops_alerts from 14 Oct 12:00 to 15 Oct 12:00 UTC, the cron and secret seeding the sweep needs, and net._http_response for the sweep's real status. Then tell me exactly what result means safe to continue and what means stop.
+
+> To be clear: you are not connected to live. Don't run anything yourself; give me the SQL and I'll run it on live and paste you the results. Anything you run against dev is not evidence about live.
+
+> Live first, docs after. Give me the corrected steps directly here, not from section 18, one step at a time, stopping after each for my go. Step 2 now: confirm my access reaches live by listing its edge functions. Use [the login saved in the keychain / a new token I'll paste into the terminal]. After we've finished on live, rewrite section 18 and record the instructions in QUEUE.md, before I message Balal.
+
+> Run the terminal commands yourself rather than giving them to me; I'll only paste SQL into the live SQL editor. For this job only, you may use the Supabase login saved in the keychain. Do step 2 now: list live's edge functions and show me the result. Stop there.
+
+> Steps 3a to 3c done on live: migration applied, 3b showed exactly GR-20611 and GR-20612 as candidates, owner postgres, service_role only, and the ledger row is in. Step 4 now: deploy deed-sweep only to live from the repo root with --use-api, confirm it's deployed and show me the version. Then immediately step 5: run it on live with {"dryRun":true} and show me wouldReconcile, blockedByFreshLock, unreadable and failed. Change nothing for real. The hourly cron fires at 14:20 UK time (13:20 UTC), so if the dry run shows anything other than GR-20611 and GR-20612, unschedule deed-sweep-hourly before then and tell me.
+
+Plus, in order: "go", "Go for step 3.", "I can't see the migration. Print the full contents of migration 20261015000000 in one code block, nothing else, so I can copy it into the live SQL editor.", and "A" (choosing a controlled real run over letting the 13:20 cron do it).
+
+### THE RULE THAT CHANGED, AND IT IS SCOPED
+
+`CLAUDE.md` says the live project is never touched, read or written. Matt
+suspended that **for this job only**, in writing, and only for the Supabase
+login already in the keychain: *"For this job only, you may use the Supabase
+login saved in the keychain."* I had refused to infer it from a bracketed
+either/or in the previous message, which was right: the first version of that
+instruction left both options in and resolved nothing.
+
+The division that held throughout: **Matt pasted every SQL statement into the
+live SQL editor himself. I ran the terminal commands.** One exception I called
+out at the time rather than after: the dry run and the real run both need the
+cron secret, so I read `ops_secrets.reminders_cron` from live into a shell
+variable and never printed it. There was no way to invoke the function without
+it, and the alternative (Matt pasting the value into the chat) was worse.
+
+### WHAT THE PRE-FLIGHT FOUND, WHICH KILLED THE PLAN AS WRITTEN
+
+The pre-flight was built to be paranoid and it earned it twice over.
+
+**THE FIX I HAD WRITTEN COULD NOT HAVE RECOVERED EITHER DEED.** Both
+applications already carried a `pandadoc_events` row
+`<document>:document.completed`. The sweep's lock inserted that same id and read
+`23505` as "the webhook has it, or had it. Either way not ours to do", so it
+would have skipped both, silently, every hour, for ever. Worse, the dry run
+reported them under `wouldReconcile` because that check sat BEFORE the lock
+attempt: it would have promised Matt the work and then done nothing. A safety
+check that lies is worse than no safety check, because the person reading it has
+stopped watching.
+
+**AND THE DIAGNOSIS IN SECTION 18 WAS WRONG.** Not "the callback never
+arrived". The `ops_alerts` row at bucket 13:00 on 14 October reads
+`pandadoc-webhook: Cannot read properties of null (reading 'ok')`, and
+GR-20611's completion arrived at 13:14:48. `downloadPdf` returned **null** and
+the next line reads `pdf.ok`. That throws, and the delete that releases the
+dedup row sits INSIDE the branch the throw stopped us reaching. PandaDoc
+retried, hit the primary key, and the handler answered 200. A committed claim
+with no work behind it.
+
+The evidence chain, all from live: `:document.viewed` carries an
+`application_id` so the lookup works; `:document.completed` carries null so the
+handler never reached the write that follows execution; `deed_state` was still
+`awaiting_tenant` with `executed_pdf_path` null so `apply_deed_executed` never
+succeeded; and between those two points the only `.ok` read is `pdf.ok`.
+
+**IT IS A RACE, NOT THAT EVENING'S DEPLOY.** PandaDoc fires
+`document.completed` before it renders the signed PDF, which this codebase
+already knew and says in a comment. Nine minutes from sent to signed for
+GR-20611, three for GR-20612. GR-20612 has no `webhook_error` at 17:00, so it
+failed by a second route with the same end state.
+
+Our own `downloadPdf` cannot return null. Live's can, because live's
+`pandadoc-webhook` is not ours: `origin/main` carries Balal's commit *"Pandadoc
+logic same for testing delay if not yet downloade deed"*, and section 16.5
+flagged that function as an unreconciled divergence that nobody has read.
+
+### WHAT WAS LEARNED ABOUT LIVE ITSELF
+
+- **Live runs OUR `pandadoc-webhook`**, proved by six
+  `pandadoc_completed_unknown_document` alerts this morning: that alert type
+  exists only in our code, and Balal's 18-September version raises no incidents
+  at all.
+- **The whole estate was redeployed at 10:08 to 10:11 UTC on 15 October**, 36 of
+  37 functions, not on the evening of the 14th. So the exact code that lost the
+  deeds may already have been replaced, and "this will keep happening" is
+  **unverified** rather than established. Nobody has read v37.
+- `pandadoc-webhook` and `stripe-webhook` are both at version 37. An extra
+  deploy leaves a function permanently one ahead, so the parity argues AGAINST
+  section 16.5's "redeployed a day after the rest", though it does not settle it.
+- 37 functions on live and the slug set matches our tree exactly. No
+  Balal-only function.
+- **Dev's migration ledger holds 193 rows against 494 files**, because 301 were
+  applied through the Management API. The ledger is not a true record, which is
+  the real reason `db push` is banned rather than merely discouraged.
+- `accept-invite` was the only function left out of this morning's deploy. Its
+  last code change predates its deploy, so live's copy is current. Checked
+  before flagging, and it is a non-finding.
+
+### WHAT WAS DONE ON LIVE, AND WHAT CAME BACK
+
+Migration `20261015000000` pasted (owner `postgres`, `service_role` only, both
+objects confirmed), ledger row inserted, `deed-sweep` deployed alone (version 9
+to 10, `verify_jwt` still false). Dry run named exactly GR-20611 and GR-20612
+under `wouldReconcile` with `blockedByFreshLock` empty, which is the corrected
+lock reading two real 14-October tombstones and judging them adoptable.
+`stillOut` empty, so PandaDoc's own API confirmed both documents completed.
+
+The real run, scoped to those two refs, reconciled both. Confirmed in the
+tables: `status=deed`, `deed_state=executed`, PDFs in the `deeds` bucket at
+735,142 and 733,039 bytes, `deed_delivered_at` set, `awaiting_staff_send=false`,
+the `:document.completed` rows now carrying their `application_id`, and
+`deeds_awaiting_completion` down to zero so the 13:20 cron was a no-op.
+
+Both `deed_completion_reconciled` alerts came back saying the row **already
+existed**, which is live's own code confirming the tombstone diagnosis from the
+inside.
+
+### TWO THINGS THE CONFIRMATION TURNED UP, NEITHER CLOSED
+
+- **GR-20611 is not a Regent deed.** It delivered to
+  `lettings@omniapropertygroup.com, mdwyer@opndoor.co`, and its 14 October
+  `referrer_notified` names `mdwyer@opndoor.co`. Matt approved both deeds
+  described as Regent's. The deed has gone to Omnia and to its tenant. If the
+  application is genuine this was overdue and right; if it was a test made with
+  a real agency's address, a real letting agent now holds a deed for a tenancy
+  that may not exist. **Matt to confirm.**
+- **HubSpot recorded neither signing.** Two fresh `hubspot_sync_error` alerts at
+  13:00, both `deed_signed`, both a 400: `Cannot create object with type:
+  p144519077_applicants ... required properties were missing: [full_name]`.
+  Pre-existing rather than caused by the reconciliation: the same alert types,
+  including `dead_letter` variants, were already in the 14 to 15 October window.
+  The CRM still shows both applications as unsigned.
+
+### STILL OPEN
+
+- The landlord copy is a manual **Send deed to landlord** press on each of the
+  two applications. Automatic completion delivers to the agency and the tenant
+  only.
+- Live's `pandadoc-webhook` v37 has never been read. Until it is, we do not know
+  whether the null-returning `downloadPdf` is still there. Section 16.5's curl
+  is still the way to find out, and it is now the single most valuable
+  outstanding check on the deed rail.
+- The Test environment is still pointed at the live PandaDoc account. Six
+  documents named in live's alerts this morning:
+  `TM4yUXctViXnFACToGWayQ`, `BGTCF8HZ3VDJLGyUMvHd3i`, `5jLb9B6iMPuEFxAtHYk499`,
+  `Gaazw8dRghyVoo32HnHQvV`, `TLtcwtACez8TWzV8LAjdCW`, `gzYHFQFRBaVYiA5LYv5sua`.
+  Deduped hourly, so there may be more. Each spent a live credit, and because
+  live refuses them and Test never receives the callback, **Test's own deeds are
+  not being executed anywhere either.**
+
+---
+## THE RESEND QUOTA, THE ALERT LOOP AND TWO UI ITEMS (instruction, 2026-10-15, verbatim)
+
+> Live just failed to send emails with Resend 429 daily_quota_exceeded (GR-20613 deed at 17:20, and again at 17:33). Don't change anything. Tell me: 1. Do dev and live use the same Resend API key or account? Compare the secret digests. 2. Roughly how many emails has live tried to send today, and what were they? Give me a query I can run. 3. When the quota resets or is upgraded, does anything retry the failed emails automatically, or does someone have to press Resend deed? Does that button also resend the tenant's copy? 4. Was the 17:33 retry on GR-20613 automatic or a button press? 5. What else failed to send today because of this, so I know who to follow up with? Also note as a UI fix: the long delivery error text overflows its box on the application page.
+
+### TWO UI ITEMS TO FIX
+
+- **The long delivery error text overflows its box on the application page.** Matt's
+  words. The text in question is the one the 429 produced, which embeds
+  Resend's whole JSON body: `Deed email to the agent could not be sent: Resend
+  responded 429: {"message":"You have reached your daily email sending
+  quota.",...}`. Not yet fixed.
+- **AND THE MESSAGE BESIDE IT IS FALSE, which is worse than ugly.**
+  `_shared/deedEmail.ts:283` writes "The signed deed reached the agency but a
+  copy could not be sent to X" whenever a COPY fails, with no regard for
+  whether the addressee's own send failed. On GR-20613 both failed, so that row
+  tells a reader Regent has the deed when Regent has nothing. Found while
+  answering question 5; not yet fixed.
+
+### THE ALERT LOOP IS THE CAUSE, AND IT IS NOT A VOLUME PROBLEM
+
+`report_ops_incident` does NOT throttle hourly. Its gate is new, OR quiet for
+24 hours, OR **the detail text changed**:
+
+```
+v_say := not found
+         or v_prev is distinct from left(coalesce(p_detail,''), 500)
+         or v_last < now() - interval '24 hours';
+```
+
+and `hubspot-sync` builds its detail with the attempt number inside it:
+
+```
+const where = `${ev.kind} ${app?.guarantee_ref ?? ""} (event ${ev.event_id}, attempt ${attempts})`;
+```
+
+So **every retry writes a different detail, defeats the comparison, and sends
+another email.** The sync runs every two minutes. The `ops_alerts` row insert is
+`on conflict do nothing` on an hourly bucket, so the LOG shows five rows for the
+day while the EMAILS went out every two minutes: live's own HTTP log has
+ops-alert returning 200 `sent_to: ["support@opndoor.co"]` twice at 16:02, 16:04,
+16:06, 16:08, 16:10, 16:12, then 429 from 16:14.
+
+**QUANTIFIED.** `hubspot_sync_events` carries 111 `fail:` rows for GR-20611, 111
+for GR-20612 and 66 for GR-20613: **288 failed attempts**, each one an email,
+from three applications. That is the daily quota.
+
+### WHAT THE ANSWERS WERE
+
+- **Keys differ, accounts unproven.** `RESEND_API_KEY` digest dev `0ec18ecc`,
+  live `0ed4d9a8`. Different keys, but the quota is per ACCOUNT and one account
+  holds many keys, so only the Resend dashboard settles it. **Declared: I sent
+  eleven signing invites from dev at 11:46 UTC today, and if the account is
+  shared those counted.**
+- **Nothing retries a failed email.** `delivery_failed_at` is set by
+  `record_delivery_attempt` and read only for display. No cron reads it. When
+  the quota resets, nothing happens by itself.
+- **The Resend deed button sends the agent copy ONLY.** `send-deed-to-agent`
+  imports `deliverDeedToAgent` and nothing else; the tenant's copy comes from
+  `deliverExecutedDeedToTenant`, which only the completion sequence calls. There
+  is no button anywhere that resends a tenant's signed deed, and GR-20613's
+  tenant needs one.
+- **Whether 17:33 was automatic or a press CANNOT BE READ OFF THE RECORD.** Both
+  paths write `actor: "System"` because `deliverDeedToAgent` hardcodes it, and
+  the failure message omits the `· automatic` / `· sent by X` suffix the success
+  message carries. The timing says a press (the sweep is at :20, and a PandaDoc
+  redelivery would have been deduped by the row the sweep wrote at 16:20), but
+  the system does not record it. That is a gap.
+- **GR-20613 is the only application harmed**: the referrer's copy, the
+  `lettings@` copy and the TENANT's copy all failed. The deed is issued and the
+  PDF is stored.
+- **And ops is blind**: every alert email since 16:14 failed, so nothing reaches
+  support@opndoor.co.
+
+### THE GOOD NEWS BURIED IN IT
+
+`deed_signed` on GR-20613 at **16:20:06** is the sweep's slot. The completion arm
+adopted that application's abandoned claim and issued the deed. Live's mixed
+`pandadoc-webhook` bundle cannot complete anything, so the sweep is the only
+reason GR-20613 has a deed at all. Only the emails failed.
+
+---
+
+## THE CHANNEL, THE LOOP AND THE REPLAY (instruction, 2026-10-15, verbatim)
+
+> Go ahead and record the two UI items and the alert-loop finding in docs/QUEUE.md.
+>
+> Then fix the two causes. Don't change anything on live; give me SQL to run or ask for my go to deploy.
+>
+> 1. HubSpot channel. On 14 Oct the referral sync failed with a 400 on "channel": GR-20611: "Partner referral was not one of the allowed options: [Direct, Partner Referral, Integration]"; GR-20612: "Agent referral was not one of the allowed options: [Direct, Partner Referral, Integration]". I've already applied the full_name update on live (hubspot_field_map id 5 now has all seven events). The rule: anything referred by an agent or a partner through the portal goes to HubSpot as "Partner Referral". Anything that came in through the partner API goes as "Integration". Don't add any options in HubSpot; fix it on our side. Tell me what currently gets sent as "Direct" so I can confirm it. If it's in the mapping, give me the SQL for live plus a migration in the repo. If it's code, tell me which function needs deploying.
+> 2. The alert loop. Stop a retrying failure from emailing support@opndoor.co every two minutes: the same failure should alert once and then stay quiet (e.g. take the attempt number out of the comparison, or only re-alert hourly). Smallest safe fix, tested on dev.
+> 3. The replay. List every referral whose HubSpot sync has failed or been parked since this started (including GR-20613), and update the replay SQL to cover them all, to run only after 1 and 2 are live. Tell me exactly what it will re-send.
+>
+> Show me everything, then stop for my go before anything touches live.
+
+### WHAT THE CENSUS SHOWED, AND IT CHANGES THE DIAGNOSIS
+
+Live has nine applications, on three partners:
+
+| partner | kind | house | referencing_mode | apps | channel sent |
+| --- | --- | --- | --- | --- | --- |
+| lettings-in-a-box | supplier | false | pre_referenced_screened | 5 | Partner referral |
+| opndoor-agents | agency | false | opndoor_referenced | 2 | Agent referral |
+| reference-my-tenant | supplier | false | pre_referenced_open | 2 | Partner referral |
+| opndoor-direct | house | **true** | opndoor_referenced | **0** | would be Direct |
+| referencing-partner | house | **true** | pre_referenced_open | **0** | would be Provider hand-over |
+
+- **NOTHING is sent as "Direct"**, which was Matt's question. The only two
+  house-route partners have no applications at all.
+- `opndoor-agents` is `is_house_route = FALSE` on live, which is why it yields
+  'Agent referral' and not 'Direct'. Worth knowing, because the function's first
+  arms are all about house routes and none of them fire.
+- **ALL NINE applications carry a `referral_created` activity row**, so every one
+  came through the portal and NOT ONE through the partner API. By Matt's rule all
+  nine are "Partner Referral" and nothing is "Integration" yet.
+
+**AND THE BREAK IS HUBSPOT-SIDE, NOT OURS.** GR-20602 through GR-20607 all
+synced cleanly, zero parked and zero failed, and GR-20607 sent "Partner
+referral" on 28 September and was accepted. The same value was refused on 14
+October. So somebody narrowed that property's option list in HubSpot between
+those dates. Our values were correct until the list moved under them, and the
+older applications' HubSpot records still hold values that are no longer in the
+option set.
+
+### WHY THE FIX IS NOT IN application_channel
+
+`public.application_channel` is the INTERNAL vocabulary and it is mirrored in the
+client (`src/data/channel.ts`, with its own test), read by `liveAnalytics.ts` and
+by `expiry-reminders`. Changing the strings it returns would move analytics and
+reminder behaviour to fix a HubSpot field. The translation belongs at the HubSpot
+boundary, and `application_attribution` is that boundary: `hubspot-sync/index.ts:660`
+is its only caller in the tree.
+---
 
 ---
 
